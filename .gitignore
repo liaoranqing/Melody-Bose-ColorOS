@@ -1,0 +1,14 @@
+.DS_Store
+.gradle/
+.kotlin/
+build/
+**/build/
+local.properties
+*.apk
+*.idsig
+*_decoded/
+
+# Local reverse-engineering dumps and session notes. Not part of the module.
+reverse/
+CURRENT_STATUS.md
+INSTALLATION_STATUS.md
