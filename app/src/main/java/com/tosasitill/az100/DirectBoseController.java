@@ -15,8 +15,9 @@ import java.util.concurrent.ConcurrentHashMap;
 /** Short-lived Bose BMAP RFCOMM controller owned by the Melody process. */
 final class DirectBoseController {
     private static final long CONNECT_TIMEOUT_MS = 8_000L;
-    private static final long RESPONSE_TIMEOUT_MS = 1_500L;
+    private static final long RESPONSE_TIMEOUT_MS = 3_000L;
     private static final long PRESENCE_TTL_MS = 10_000L;
+    private static final long POST_WRITE_DELAY_MS = 200L;
     private static final ConcurrentHashMap<String, Session> SESSIONS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, int[]> BATTERY = new ConcurrentHashMap<>();
     private static volatile int aclPresent;
@@ -104,6 +105,7 @@ final class DirectBoseController {
         private Operation operation;
         private boolean workerStarted;
         private boolean synced;
+        private boolean syncInFlight;
         private volatile BluetoothSocket socket;
         private volatile boolean linkDead;
         private volatile int replyBlock = -1;
@@ -152,14 +154,14 @@ final class DirectBoseController {
         }
 
         void syncOnce() {
-            if (synced) return;
+            if (synced || syncInFlight) return;
             if (!reachable()) {
                 Logs.trace("bose sync skipped: device not reachable");
                 return;
             }
             synchronized (lock) {
-                if (synced) return;
-                synced = true;
+                if (synced || syncInFlight) return;
+                syncInFlight = true;
                 wantedSync = true;
                 startWorker();
                 lock.notifyAll();
@@ -188,15 +190,16 @@ final class DirectBoseController {
         private void requeue(int mode, Operation currentOperation, boolean sync) {
             synchronized (lock) {
                 if (aclPresent < 0 || probeResult == 0) {
-                    synced = true;
+                    syncInFlight = false;
                     return;
                 }
                 if (mode >= 0 && wantedMode < 0) wantedMode = mode;
                 if (currentOperation != null && operation == null) operation = currentOperation;
-                if (sync) {
-                    synced = false;
-                    wantedSync = true;
-                }
+                    if (sync) {
+                        syncInFlight = false;
+                        synced = false;
+                        wantedSync = true;
+                    }
             }
         }
 
@@ -239,6 +242,9 @@ final class DirectBoseController {
                         if (currentOperation != null) apply(currentOperation);
                         if (sync) queryState();
                     } finally {
+                        synchronized (lock) {
+                            syncInFlight = false;
+                        }
                         closeSocket();
                     }
                 }
