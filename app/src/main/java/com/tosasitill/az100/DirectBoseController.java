@@ -420,8 +420,8 @@ final class DirectBoseController {
             int level = Math.max(0, Math.min(10, operation.values[0]));
             BoseBmap.Frame current = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
                     BoseBmap.OP_GET, null);
-            if (current == null || current.payload.length < 5) {
-                Logs.trace("bose CNC update skipped: audio settings read failed"
+            if (current == null || current.payload.length != 5) {
+                Logs.trace("bose CNC update skipped: expected 5-byte audio settings"
                         + (current == null ? " (timeout)" : " payload=" + BoseBmap.hex(current.payload)));
                 return;
             }
@@ -469,12 +469,27 @@ final class DirectBoseController {
             BoseBmap.Frame mode = command(BoseBmap.BLOCK_AUDIO_MODES,
                     BoseBmap.FUNC_CURRENT_MODE, BoseBmap.OP_GET, null);
             if (mode != null && mode.payload.length > 0) MelodyProviderHook.onBoseMode(mode.u8(0));
+            else Logs.trace("bose mode GET failed: " + describe(mode));
             BoseBmap.Frame audioSettings = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
                     BoseBmap.OP_GET, null);
-            if (audioSettings != null) MelodyProviderHook.onBoseAudioSettings(audioSettings.payload);
+            if (audioSettings != null && audioSettings.operator != BoseBmap.OP_ERROR) {
+                MelodyProviderHook.onBoseAudioSettings(audioSettings.payload);
+            } else {
+                Logs.trace("bose audio settings GET failed: " + describe(audioSettings));
+            }
             BoseBmap.Frame battery = command(BoseBmap.BLOCK_BATTERY,
                     BoseBmap.FUNC_BATTERY, BoseBmap.OP_GET, null);
-            if (battery != null && battery.operator != BoseBmap.OP_ERROR) parseBattery(battery.payload);
+            if (battery != null && battery.operator != BoseBmap.OP_ERROR) {
+                Logs.trace("bose battery RX payload=" + BoseBmap.hex(battery.payload));
+                parseBattery(battery.payload);
+            } else {
+                Logs.trace("bose battery GET failed: " + describe(battery));
+            }
+        }
+
+        private String describe(BoseBmap.Frame frame) {
+            return frame == null ? "timeout/closed"
+                    : "op=" + frame.operator + " payload=" + BoseBmap.hex(frame.payload);
         }
 
         private void parseBattery(byte[] payload) {
