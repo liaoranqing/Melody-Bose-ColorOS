@@ -37,8 +37,6 @@ final class DirectBoseController {
 
     /** Force a fresh BMAP battery/state read and discard any stale battery cache. */
     static void refreshState(Context context, String address) {
-        String key = BoseDeviceConfig.normalize(address);
-        BATTERY.remove(key);
         Session session = session(context, address);
         if (session != null) session.refreshState();
     }
@@ -132,7 +130,10 @@ final class DirectBoseController {
         }
 
         void onAcl(int state) {
-            if (state < 0) synced = false;
+            if (state < 0) {
+                synced = false;
+                syncInFlight = false;
+            }
         }
 
         void requestMode(int mode) {
@@ -171,7 +172,9 @@ final class DirectBoseController {
         void refreshState() {
             Logs.trace("bose explicit state refresh requested");
             synchronized (lock) {
+                if (syncInFlight) return;
                 synced = false;
+                syncInFlight = true;
                 wantedSync = true;
                 startWorker();
                 lock.notifyAll();
@@ -226,13 +229,17 @@ final class DirectBoseController {
                         currentOperation = operation;
                         operation = null;
                     }
-                    if (!reachable() && mode < 0 && currentOperation == null) continue;
-                if (mode >= 0 && aclPresent < 0) continue;
-                if (currentOperation != null && aclPresent < 0) continue;
-                if ((mode >= 0 || currentOperation != null || sync) && !reachable()) {
-                    Logs.trace("bose operation skipped: device not reachable");
-                    continue;
-                }
+                    if (mode >= 0 && aclPresent < 0) continue;
+                    if (currentOperation != null && aclPresent < 0) continue;
+                    if ((mode >= 0 || currentOperation != null || sync) && !reachable()) {
+                        Logs.trace("bose operation skipped: device not reachable");
+                        if (sync) {
+                            synchronized (lock) {
+                                syncInFlight = false;
+                            }
+                        }
+                        continue;
+                    }
                     if (!open()) {
                         requeue(mode, currentOperation, sync);
                         break;
@@ -310,6 +317,8 @@ final class DirectBoseController {
                 socket = opened;
                 linkDead = false;
                 opened.connect();
+                Thread.sleep(500L);
+                drainStartup(opened);
             } catch (Throwable error) {
                 Logs.trace("bose BMAP channel " + BoseDeviceConfig.RFCOMM_CHANNEL
                         + " link failed: " + error);
@@ -321,6 +330,16 @@ final class DirectBoseController {
                 }
                 if (socket == opened) socket = null;
             }
+        }
+
+        private void drainStartup(BluetoothSocket current) throws IOException {
+            InputStream input = current.getInputStream();
+            int available = input.available();
+            if (available <= 0) return;
+            byte[] stale = new byte[Math.min(available, 4096)];
+            int count = input.read(stale);
+            if (count > 0) Logs.trace("bose startup bytes discarded=" + count
+                    + " data=" + BoseBmap.hex(java.util.Arrays.copyOf(stale, count)));
         }
 
         private void startReader(final BluetoothSocket current) {
@@ -378,8 +397,14 @@ final class DirectBoseController {
                 Logs.trace("bose write failed: " + error);
                 return null;
             }
-            long deadline = SystemClock.elapsedRealtime() + RESPONSE_TIMEOUT_MS;
-            synchronized (replyLock) {
+                try {
+                    Thread.sleep(POST_WRITE_DELAY_MS);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+                long deadline = SystemClock.elapsedRealtime() + RESPONSE_TIMEOUT_MS;
+                synchronized (replyLock) {
                 while (reply == null && !linkDead && SystemClock.elapsedRealtime() < deadline) {
                     try {
                         replyLock.wait(150L);
