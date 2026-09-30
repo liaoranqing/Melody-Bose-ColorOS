@@ -486,8 +486,8 @@ final class DirectBoseController {
         private void setMode(int mode) {
             if (mode == BoseDeviceConfig.MODE_OFF) {
                 // OFF is not a Bose AudioModes preset. It is Quiet with the live
-                // ANC bit disabled; switch to Quiet first, then write ANC=0.
-                if (!switchAudioMode(BoseDeviceConfig.MODE_QUIET)) return;
+                // ANC bit disabled, which is how the earlier working build did it.
+                switchAudioMode(BoseDeviceConfig.MODE_QUIET);
                 setNoiseCancellation(false);
                 return;
             }
@@ -546,14 +546,16 @@ final class DirectBoseController {
             // live settings returned by GET and change only the ANC byte.
             BoseBmap.Frame current = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
                     BoseBmap.OP_GET, null);
-            byte[] payload = current != null && current.payload.length >= 5
-                    ? Arrays.copyOf(current.payload, 5)
-                    : new byte[]{5, 0, 0, 0, 0};
+            if (current == null || current.payload.length < 5) {
+                Logs.trace("bose noise-off unavailable: audio settings read failed");
+                return;
+            }
+            byte[] payload = Arrays.copyOf(current.payload, 5);
             payload[4] = (byte) (enabled ? 1 : 0);
             BoseBmap.Frame answer = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
                     BoseBmap.OP_SETGET, payload);
             if (answer == null || answer.operator == BoseBmap.OP_ERROR) {
-                Logs.trace("bose ANC update rejected response=" + describe(answer));
+                Logs.trace("bose noise-off update rejected response=" + describe(answer));
                 return;
             }
             Logs.trace("bose ANC update enabled=" + enabled + " payload="

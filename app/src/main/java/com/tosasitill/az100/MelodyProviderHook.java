@@ -61,9 +61,15 @@ public final class MelodyProviderHook {
     /** Provider mode ids from the ColorOS noise-reduction tile contract. */
     private static final int NOISE_OFF = 1;
     private static final int NOISE_ANC = 5;
+    private static final int NOISE_IMMERSION = 10;
     private static final int NOISE_TRANSPARENT = 2;
-    /** ColorOS cycles through these ids in its fixed order: off, ANC, transparent. */
-    private static final String SUPPORTS = "[1,5,2]";
+    /**
+     * ColorOS cycles through the tile's own fixed order [1,5,10,2] and filters
+     * that list by this column. The immersion slot must stay in the list even
+     * when it is not wanted for display: dropping it shifts the cycle indices
+     * and makes every click target the wrong next mode.
+     */
+    private static final String SUPPORTS = "[1,5,10,2]";
     private static volatile int boseMode = BoseDeviceConfig.MODE_AWARE;
     private static volatile boolean boseNoiseCancellation = true;
     private static volatile int confirmedNoiseMode = NOISE_TRANSPARENT;
@@ -373,8 +379,10 @@ public final class MelodyProviderHook {
         int target;
         if (mode == NOISE_ANC) target = BoseDeviceConfig.MODE_QUIET;
         else if (mode == NOISE_TRANSPARENT) target = BoseDeviceConfig.MODE_AWARE;
+        else if (mode == NOISE_IMMERSION) target = BoseDeviceConfig.MODE_IMMERSION;
         else if (mode == NOISE_OFF) target = BoseDeviceConfig.MODE_OFF;
         else return;
+        if (mode == NOISE_IMMERSION) Logs.trace("bose immersion slot in cycle");
         Logs.trace("bose melody click mode=" + mode + " target=" + target);
         Context ctx = context;
         if (ctx != null) DirectBoseController.requestMode(ctx, BoseDeviceConfig.MAC, target);
