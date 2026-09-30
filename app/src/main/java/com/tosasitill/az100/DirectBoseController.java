@@ -34,6 +34,14 @@ final class DirectBoseController {
         if (session != null) session.syncOnce();
     }
 
+    /** Force a fresh BMAP battery/state read and discard any stale battery cache. */
+    static void refreshState(Context context, String address) {
+        String key = BoseDeviceConfig.normalize(address);
+        BATTERY.remove(key);
+        Session session = session(context, address);
+        if (session != null) session.refreshState();
+    }
+
     static boolean reachable(Context context, String address) {
         Session session = session(context, address);
         return session != null && session.reachable();
@@ -158,6 +166,16 @@ final class DirectBoseController {
             }
         }
 
+        void refreshState() {
+            Logs.trace("bose explicit state refresh requested");
+            synchronized (lock) {
+                synced = false;
+                wantedSync = true;
+                startWorker();
+                lock.notifyAll();
+            }
+        }
+
         void release(String reason) {
             Logs.trace("bose release " + key + " reason=" + reason);
             synchronized (lock) {
@@ -206,8 +224,12 @@ final class DirectBoseController {
                         operation = null;
                     }
                     if (!reachable() && mode < 0 && currentOperation == null) continue;
-                    if (mode >= 0 && aclPresent < 0) continue;
-                    if (currentOperation != null && aclPresent < 0) continue;
+                if (mode >= 0 && aclPresent < 0) continue;
+                if (currentOperation != null && aclPresent < 0) continue;
+                if ((mode >= 0 || currentOperation != null || sync) && !reachable()) {
+                    Logs.trace("bose operation skipped: device not reachable");
+                    continue;
+                }
                     if (!open()) {
                         requeue(mode, currentOperation, sync);
                         break;
@@ -322,7 +344,7 @@ final class DirectBoseController {
         }
 
         @Override public void onFrame(BoseBmap.Frame frame) {
-            if (Logs.DEBUG) Logs.d("bose rx " + frame.block + "." + frame.function
+            Logs.trace("bose rx " + frame.block + "." + frame.function
                     + " op=" + frame.operator + " " + BoseBmap.hex(frame.payload));
             synchronized (replyLock) {
                 if (reply == null && (replyBlock < 0 || frame.matches(replyBlock, replyFunction))) {
@@ -399,18 +421,26 @@ final class DirectBoseController {
             BoseBmap.Frame current = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
                     BoseBmap.OP_GET, null);
             if (current == null || current.payload.length < 5) {
-                Logs.trace("bose CNC update skipped: audio settings read failed");
+                Logs.trace("bose CNC update skipped: audio settings read failed"
+                        + (current == null ? " (timeout)" : " payload=" + BoseBmap.hex(current.payload)));
                 return;
             }
-            byte[] settings = current.payload.clone();
+            // [31.10] on this product is a fixed five-byte tuple:
+            // CNC, autoCNC, spatial, wind, ANC. AutoCNC must remain disabled (0).
+            // Preserve the other current settings, but never send an unsupported
+            // 7-byte tuple or the invalid autoCNC=5 seen in earlier builds.
+            byte[] settings = new byte[5];
+            System.arraycopy(current.payload, 0, settings, 0, 5);
             settings[0] = (byte) level;
+            settings[1] = 0;
             BoseBmap.Frame answer = command(BoseBmap.BLOCK_AUDIO_MODES,
                     10, BoseBmap.OP_SETGET, settings);
             if (answer == null || answer.operator == BoseBmap.OP_ERROR) {
-                Logs.trace("bose CNC update rejected");
-            } else {
-                Logs.trace("bose CNC level=" + level + " accepted");
+                Logs.trace("bose CNC update rejected response="
+                        + (answer == null ? "timeout" : answer.operator + ":" + BoseBmap.hex(answer.payload)));
+                return;
             }
+            Logs.trace("bose CNC level=" + level + " accepted payload=" + BoseBmap.hex(answer.payload));
         }
 
         private void setNoiseCancellation(boolean enabled) {

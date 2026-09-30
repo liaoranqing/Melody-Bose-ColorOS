@@ -397,8 +397,11 @@ public final class MelodyProviderHook {
                         announceBoseWear(true);
                         DirectBoseController.syncOnce(receiver, BoseDeviceConfig.MAC);
                     } else {
+                        // Bose Music can transiently tear down the ACL/RFCOMM link while
+                        // changing profiles. Keep the ColorOS tile available; otherwise
+                        // SystemUI remembers the wear=false update until a full reboot.
                         DirectBoseController.disconnect(receiver, BoseDeviceConfig.MAC, "bose acl gone");
-                        announceBoseWear(false);
+                        Logs.trace("bose ACL disconnected; keep native control tile available");
                     }
                 }
             }, filter);
