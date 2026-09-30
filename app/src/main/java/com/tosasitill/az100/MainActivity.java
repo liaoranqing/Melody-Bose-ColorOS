@@ -80,14 +80,33 @@ public class MainActivity extends Activity {
         Button sync = new Button(this);
         sync.setText("同步耳机状态并读取电量");
         sync.setOnClickListener(view -> {
+            sync.setEnabled(false);
+            levelText.setText("正在连接耳机读取…");
             try {
-                DirectBoseController.syncOnce(getApplicationContext(), BoseDeviceConfig.MAC);
-                int[] battery = DirectBoseController.cachedBattery(BoseDeviceConfig.MAC);
-                String text = battery == null
-                        ? "尚未读到电量，请查看 logcat 中的 bose 连接日志"
-                        : "左 " + battery[0] + "%  右 " + battery[1] + "%  盒 " + battery[2] + "%";
-                levelText.setText(text);
+                DirectBoseController.refreshState(getApplicationContext(), BoseDeviceConfig.MAC);
+                Handler handler = new Handler(Looper.getMainLooper());
+                final long deadline = android.os.SystemClock.elapsedRealtime() + 15_000L;
+                Runnable poll = new Runnable() {
+                    @Override public void run() {
+                        int[] battery = DirectBoseController.cachedBattery(BoseDeviceConfig.MAC);
+                        if (battery != null && (battery[0] >= 0 || battery[1] >= 0)) {
+                            levelText.setText("左 " + battery[0] + "%  右 " + battery[1]
+                                    + "%  盒 " + battery[2] + "%");
+                            sync.setEnabled(true);
+                            return;
+                        }
+                        if (android.os.SystemClock.elapsedRealtime() >= deadline) {
+                            levelText.setText("读取超时或耳机未响应，请查看 bose-melody.log");
+                            sync.setEnabled(true);
+                            return;
+                        }
+                        handler.postDelayed(this, 400L);
+                    }
+                };
+                handler.postDelayed(poll, 400L);
             } catch (Throwable error) {
+                sync.setEnabled(true);
+                levelText.setText("读取失败：" + error.getClass().getSimpleName());
                 Logs.e("sync button failed", error);
             }
         });
