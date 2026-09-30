@@ -136,6 +136,7 @@ public final class MelodyProviderHook {
         String path = uri == null ? null : uri.getPath();
         if (path == null) return null;
         if (PATH_ACTIVE.equals(path)) {
+            logCursorColumns("active", result);
             // Always return one stable Bose row. Returning Melody's row when the
             // Bose app refreshes its own state makes SystemUI lose the tile.
             announceBoseReachable();
@@ -150,8 +151,10 @@ public final class MelodyProviderHook {
         if (PATH_NOISE.equals(path)) {
             if (!"address".equals(selection) || args == null || args.length == 0) return null;
             if (!BoseDeviceConfig.isMac(args[0])) return null;
+            logCursorColumns("noise", result);
             announceBoseReachable();
             DirectBoseController.syncOnce(context, BoseDeviceConfig.MAC);
+            closeCursor(result);
             return boseNoiseCursor();
         }
         return null;
@@ -175,20 +178,6 @@ public final class MelodyProviderHook {
         return false;
     }
 
-    static void configureBose(Context ctx, String action, int first, int second, int third) {
-        if (ctx == null) return;
-        Bundle extras = new Bundle();
-        extras.putString("action", action);
-        extras.putInt("first", first);
-        extras.putInt("second", second);
-        extras.putInt("third", third);
-        try {
-            ctx.getContentResolver().call(Uri.parse(BASE_URI), METHOD_BOSE_SETTINGS, null, extras);
-        } catch (Throwable error) {
-            Logs.e("bose settings call failed", error);
-        }
-    }
-
     private static void applyBoseSettings(Bundle extras) {
         try {
             String action = extras.getString("action", "");
@@ -199,10 +188,6 @@ public final class MelodyProviderHook {
         } catch (Throwable error) {
             Logs.e("bose control request failed", error);
         }
-    }
-
-    private static int clampEq(int value) {
-        return Math.max(-10, Math.min(10, value));
     }
 
     private static Cursor activeCursor() {
@@ -264,18 +249,6 @@ public final class MelodyProviderHook {
         notifyChange(FLAG_NOISE);
     }
 
-    static void setBoseEq(int bass, int mid, int treble) {
-        DirectBoseController.setEq(context, bass, mid, treble);
-    }
-
-    static void setBoseAutoPause(boolean enabled) {
-        DirectBoseController.setAutoPause(context, enabled);
-    }
-
-    static void setBoseVoicePrompts(boolean enabled) {
-        DirectBoseController.setVoicePrompts(context, enabled);
-    }
-
     static void setBoseCnc(int level) {
         DirectBoseController.setCnc(context, level);
     }
@@ -322,6 +295,36 @@ public final class MelodyProviderHook {
         } catch (Throwable t) {
             Logs.d("battery notify failed", t);
         }
+    }
+
+    /**
+     * Record Melody's own column names once per query kind. They reveal which
+     * extra fields (device class, icon, category) ColorOS reads to pick the
+     * earphone icon in the control center.
+     */
+    private static volatile boolean loggedActiveColumns;
+    private static volatile boolean loggedNoiseColumns;
+
+    private static void logCursorColumns(String kind, Cursor cursor) {
+        if ("active".equals(kind)) {
+            if (loggedActiveColumns) return;
+            loggedActiveColumns = true;
+        } else {
+            if (loggedNoiseColumns) return;
+            loggedNoiseColumns = true;
+        }
+        if (cursor == null) {
+            Logs.trace("bose melody " + kind + " columns=null");
+            return;
+        }
+        String[] columns = cursor.getColumnNames();
+        StringBuilder builder = new StringBuilder();
+        for (String column : columns) {
+            if (builder.length() > 0) builder.append(',');
+            builder.append(column);
+        }
+        Logs.trace("bose melody " + kind + " columns=[" + builder + "] rows="
+                + cursor.getCount());
     }
 
     private static void closeCursor(Cursor cursor) {

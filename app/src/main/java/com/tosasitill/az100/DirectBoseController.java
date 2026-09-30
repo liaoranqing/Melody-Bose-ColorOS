@@ -9,7 +9,6 @@ import android.os.SystemClock;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,8 +19,6 @@ final class DirectBoseController {
     private static final long PRESENCE_TTL_MS = 10_000L;
     private static final ConcurrentHashMap<String, Session> SESSIONS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, int[]> BATTERY = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, int[]> EQ = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, boolean[]> SETTINGS = new ConcurrentHashMap<>();
     private static volatile int aclPresent;
 
     private DirectBoseController() {
@@ -47,33 +44,8 @@ final class DirectBoseController {
         return values == null ? null : values.clone();
     }
 
-    static int[] cachedEq(String address) {
-        int[] values = EQ.get(BoseDeviceConfig.normalize(address));
-        return values == null ? null : values.clone();
-    }
-
-    static boolean[] cachedSettings(String address) {
-        boolean[] values = SETTINGS.get(BoseDeviceConfig.normalize(address));
-        return values == null ? null : values.clone();
-    }
-
     static int cachedMode() {
         return MelodyProviderHook.boseModeCache();
-    }
-
-    static void setEq(Context context, int bass, int mid, int treble) {
-        Session session = session(context, BoseDeviceConfig.MAC);
-        if (session != null) session.enqueue(new Operation("eq", new int[]{bass, mid, treble}));
-    }
-
-    static void setAutoPause(Context context, boolean enabled) {
-        Session session = session(context, BoseDeviceConfig.MAC);
-        if (session != null) session.enqueue(new Operation("auto_pause", new int[]{enabled ? 1 : 0}));
-    }
-
-    static void setVoicePrompts(Context context, boolean enabled) {
-        Session session = session(context, BoseDeviceConfig.MAC);
-        if (session != null) session.enqueue(new Operation("prompts", new int[]{enabled ? 1 : 0}));
     }
 
     static void setCnc(Context context, int level) {
@@ -83,6 +55,7 @@ final class DirectBoseController {
 
     static void setPresent(boolean present) {
         aclPresent = present ? 1 : -1;
+        Logs.trace("bose acl present=" + present);
         for (Session session : SESSIONS.values()) session.onAcl(aclPresent);
     }
 
@@ -153,6 +126,7 @@ final class DirectBoseController {
         }
 
         void requestMode(int mode) {
+            Logs.trace("bose request mode=" + mode);
             synchronized (lock) {
                 wantedMode = mode;
                 startWorker();
@@ -161,6 +135,7 @@ final class DirectBoseController {
         }
 
         void enqueue(Operation value) {
+            Logs.trace("bose enqueue " + value.name);
             synchronized (lock) {
                 operation = value;
                 startWorker();
@@ -169,7 +144,11 @@ final class DirectBoseController {
         }
 
         void syncOnce() {
-            if (synced || !reachable()) return;
+            if (synced) return;
+            if (!reachable()) {
+                Logs.trace("bose sync skipped: device not reachable");
+                return;
+            }
             synchronized (lock) {
                 if (synced) return;
                 synced = true;
@@ -290,6 +269,7 @@ final class DirectBoseController {
         }
 
         private void connectSocket() {
+            Logs.trace("bose connect start channel=" + BoseDeviceConfig.RFCOMM_CHANNEL);
             BluetoothSocket opened = null;
             try {
                 BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
@@ -414,44 +394,22 @@ final class DirectBoseController {
         }
 
         private void apply(Operation operation) {
-            if ("eq".equals(operation.name)) {
-                boolean success = true;
-                for (int band = 0; band < operation.values.length; band++) {
-                    BoseBmap.Frame answer = command(BoseBmap.BLOCK_SETTINGS, 7, BoseBmap.OP_SETGET,
-                            new byte[]{(byte) operation.values[band], (byte) band});
-                    success &= answer != null && answer.operator != BoseBmap.OP_ERROR;
-                }
-                if (success) EQ.put(key, operation.values.clone());
-            } else if ("auto_pause".equals(operation.name)) {
-                BoseBmap.Frame answer = command(BoseBmap.BLOCK_SETTINGS, 24, BoseBmap.OP_SETGET,
-                        new byte[]{(byte) operation.values[0]});
-                if (answer != null && answer.operator != BoseBmap.OP_ERROR) {
-                    SETTINGS.put(key, new boolean[]{operation.values[0] != 0});
-                }
-            } else if ("prompts".equals(operation.name)) {
-                BoseBmap.Frame current = command(BoseBmap.BLOCK_SETTINGS, 3, BoseBmap.OP_GET, null);
-                int language = current != null && current.payload.length > 0
-                        ? current.u8(0) & 0x1f : 0;
-                BoseBmap.Frame answer = command(BoseBmap.BLOCK_SETTINGS, 3, BoseBmap.OP_SETGET,
-                        new byte[]{(byte) ((operation.values[0] << 5) | language)});
-                if (answer != null && answer.operator != BoseBmap.OP_ERROR) {
-                    SETTINGS.put(key, new boolean[]{false, operation.values[0] != 0});
-                }
-            } else if ("cnc".equals(operation.name)) {
-                int level = Math.max(0, Math.min(10, operation.values[0]));
-                BoseBmap.Frame current = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
-                        BoseBmap.OP_GET, null);
-                if (current == null || current.payload.length < 5) {
-                    Logs.trace("bose CNC update skipped: audio settings read failed");
-                    return;
-                }
-                byte[] settings = current.payload.clone();
-                settings[0] = (byte) level;
-                BoseBmap.Frame answer = command(BoseBmap.BLOCK_AUDIO_MODES,
-                        10, BoseBmap.OP_SETGET, settings);
-                if (answer == null || answer.operator == BoseBmap.OP_ERROR) {
-                    Logs.trace("bose CNC update rejected");
-                }
+            if (!"cnc".equals(operation.name)) return;
+            int level = Math.max(0, Math.min(10, operation.values[0]));
+            BoseBmap.Frame current = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
+                    BoseBmap.OP_GET, null);
+            if (current == null || current.payload.length < 5) {
+                Logs.trace("bose CNC update skipped: audio settings read failed");
+                return;
+            }
+            byte[] settings = current.payload.clone();
+            settings[0] = (byte) level;
+            BoseBmap.Frame answer = command(BoseBmap.BLOCK_AUDIO_MODES,
+                    10, BoseBmap.OP_SETGET, settings);
+            if (answer == null || answer.operator == BoseBmap.OP_ERROR) {
+                Logs.trace("bose CNC update rejected");
+            } else {
+                Logs.trace("bose CNC level=" + level + " accepted");
             }
         }
 
@@ -510,23 +468,23 @@ final class DirectBoseController {
             MelodyProviderHook.onBoseBattery();
         }
 
+        /**
+         * Presence probe using only public Bluetooth API. The hidden
+         * {@code BluetoothAdapter.getConnectedDevices(int)} is blocked on
+         * Android 17 / ColorOS (NoSuchMethodException via reflection), which
+         * made every probe fail and hid the SystemUI tile. A bonded device is
+         * treated as reachable; the ACL broadcast remains the authoritative
+         * disconnect signal.
+         */
         private int probeConnected() {
             try {
                 BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-                if (adapter == null) return -1;
-                for (int profile : new int[]{2, 1, 22}) {
-                    Object result = adapter.getClass().getMethod("getConnectedDevices", int.class)
-                            .invoke(adapter, profile);
-                    if (result instanceof List) {
-                        for (Object item : (List<?>) result) {
-                            if (item instanceof BluetoothDevice
-                                    && address.equalsIgnoreCase(((BluetoothDevice) item).getAddress())) return 1;
-                        }
-                    }
+                if (adapter == null || !adapter.isEnabled()) return 0;
+                BluetoothDevice device = adapter.getRemoteDevice(address);
+                if (device != null && device.getBondState() == BluetoothDevice.BOND_BONDED) {
+                    return 1;
                 }
-                Object result = adapter.getClass().getMethod("getConnectedDevices", int.class)
-                        .invoke(adapter, 2);
-                if (result instanceof List) return 0;
+                return 0;
             } catch (Throwable error) {
                 Logs.trace("bose presence probe unavailable: " + error);
             }
