@@ -24,13 +24,15 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          # The action accepts SDK licenses and installs platform-tools.
+          # Do not request the deprecated `tools` package.
+          packages: ''
 
-      - name: Install Android SDK packages
+      - name: Install Android SDK platform
         shell: bash
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-37" "platform-tools"
+        run: sdkmanager --install "platforms;android-37"
 
       - name: Set up Gradle
         uses: gradle/gradle-build-action@v3
