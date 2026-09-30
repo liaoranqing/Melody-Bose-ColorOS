@@ -27,12 +27,13 @@ jobs:
         uses: android-actions/setup-android@v4
         with:
           # The action accepts SDK licenses and installs platform-tools.
-          # Do not request the deprecated `tools` package.
+          # Do not request the deprecated `tools` package. API 36 is used
+          # because Android 17's preview SDK package is not available here.
           packages: ''
 
-      - name: Install Android 17 preview SDK platform
+      - name: Install Android SDK platform 36
         shell: bash
-        run: sdkmanager --channel=1 --install "platforms;android-37"
+        run: sdkmanager --install "platforms;android-36"
 
       - name: Set up Gradle
         uses: gradle/gradle-build-action@v3
