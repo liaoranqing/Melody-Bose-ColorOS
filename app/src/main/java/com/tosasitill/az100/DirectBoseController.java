@@ -112,6 +112,7 @@ final class DirectBoseController {
         private volatile boolean connectorRunning;
         private volatile long probeAt;
         private volatile int probeResult;
+        private final Object ioLock = new Object();
 
         Session(Context context, String address) {
             this.context = context;
@@ -317,7 +318,7 @@ final class DirectBoseController {
                 socket = opened;
                 linkDead = false;
                 opened.connect();
-                Thread.sleep(500L);
+                Thread.sleep(POST_WRITE_DELAY_MS + 300L);
                 drainStartup(opened);
             } catch (Throwable error) {
                 Logs.trace("bose BMAP channel " + BoseDeviceConfig.RFCOMM_CHANNEL
@@ -333,13 +334,18 @@ final class DirectBoseController {
         }
 
         private void drainStartup(BluetoothSocket current) throws IOException {
-            InputStream input = current.getInputStream();
-            int available = input.available();
-            if (available <= 0) return;
-            byte[] stale = new byte[Math.min(available, 4096)];
-            int count = input.read(stale);
-            if (count > 0) Logs.trace("bose startup bytes discarded=" + count
-                    + " data=" + BoseBmap.hex(java.util.Arrays.copyOf(stale, count)));
+                InputStream input = current.getInputStream();
+                int total = 0;
+                while (total < 4096) {
+                    int available = input.available();
+                    if (available <= 0) break;
+                    byte[] stale = new byte[Math.min(available, 4096 - total)];
+                    int count = input.read(stale);
+                    if (count <= 0) break;
+                    total += count;
+                    Logs.trace("bose startup bytes discarded=" + count
+                            + " data=" + BoseBmap.hex(java.util.Arrays.copyOf(stale, count)));
+                }
         }
 
         private void startReader(final BluetoothSocket current) {
@@ -380,6 +386,7 @@ final class DirectBoseController {
         }
 
         private BoseBmap.Frame command(int block, int function, int operator, byte[] payload) {
+            synchronized (ioLock) {
             synchronized (replyLock) {
                 reply = null;
                 replyBlock = block;
@@ -419,6 +426,7 @@ final class DirectBoseController {
                 replyFunction = -1;
                 return result;
             }
+            }
         }
 
         private void setMode(int mode) {
@@ -449,51 +457,24 @@ final class DirectBoseController {
         private void apply(Operation operation) {
             if (!"cnc".equals(operation.name)) return;
             int level = Math.max(0, Math.min(10, operation.values[0]));
-            BoseBmap.Frame current = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
-                    BoseBmap.OP_GET, null);
-            if (current == null || current.payload.length != 5) {
-                Logs.trace("bose CNC update skipped: expected 5-byte audio settings"
-                        + (current == null ? " (timeout)" : " payload=" + BoseBmap.hex(current.payload)));
-                return;
-            }
-            // [31.10] on this product is a fixed five-byte tuple:
-            // CNC, autoCNC, spatial, wind, ANC. AutoCNC must remain disabled (0).
-            // Preserve the other current settings, but never send an unsupported
-            // 7-byte tuple or the invalid autoCNC=5 seen in earlier builds.
-            byte[] settings = new byte[5];
-            System.arraycopy(current.payload, 0, settings, 0, 5);
-            settings[0] = (byte) level;
-            settings[1] = 0;
-            BoseBmap.Frame answer = command(BoseBmap.BLOCK_AUDIO_MODES,
-                    10, BoseBmap.OP_SETGET, settings);
+            // EDITH exposes writable CNC at [1.5], payload [level, enabled].
+            // [31.10] is read-only for this product, so do not attempt SETGET there.
+            byte[] payload = new byte[]{(byte) level, 1};
+            BoseBmap.Frame answer = command(BoseBmap.BLOCK_SETTINGS,
+                    BoseBmap.FUNC_CNC, BoseBmap.OP_SETGET, payload);
             if (answer == null || answer.operator == BoseBmap.OP_ERROR) {
                 Logs.trace("bose CNC update rejected response="
                         + (answer == null ? "timeout" : answer.operator + ":" + BoseBmap.hex(answer.payload)));
                 return;
             }
-            Logs.trace("bose CNC level=" + level + " accepted payload=" + BoseBmap.hex(answer.payload));
+            BoseBmap.Frame confirmed = command(BoseBmap.BLOCK_SETTINGS,
+                    BoseBmap.FUNC_CNC, BoseBmap.OP_GET, null);
+            Logs.trace("bose CNC level=" + level + " set accepted; readback="
+                    + (confirmed == null ? "timeout/closed" : BoseBmap.hex(confirmed.payload)));
         }
 
         private void setNoiseCancellation(boolean enabled) {
-            BoseBmap.Frame current = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
-                    BoseBmap.OP_GET, null);
-            if (current == null || current.payload.length < 5) {
-                Logs.trace("bose noise-off unavailable: audio settings read failed");
-                return;
-            }
-            byte[] settings = current.payload.clone();
-            settings[4] = (byte) (enabled ? 1 : 0);
-            BoseBmap.Frame answer = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
-                    BoseBmap.OP_SETGET, settings);
-            if (answer == null || answer.operator == BoseBmap.OP_ERROR) {
-                Logs.trace("bose noise-off update rejected");
-                return;
-            }
-            BoseBmap.Frame mode = command(BoseBmap.BLOCK_AUDIO_MODES,
-                    BoseBmap.FUNC_CURRENT_MODE, BoseBmap.OP_GET, null);
-            if (mode != null && mode.payload.length > 0) {
-                MelodyProviderHook.onBoseMode(mode.u8(0));
-            }
+            Logs.trace("bose ANC toggle unsupported without editable mode configuration; enabled=" + enabled);
         }
 
         private void queryState() {
@@ -516,6 +497,7 @@ final class DirectBoseController {
             } else {
                 Logs.trace("bose battery GET failed: " + describe(battery));
             }
+            synced = battery != null && battery.operator != BoseBmap.OP_ERROR;
         }
 
         private String describe(BoseBmap.Frame frame) {
@@ -540,6 +522,10 @@ final class DirectBoseController {
                 }
             }
             if (aggregate < 0 && left >= 0 && right >= 0) aggregate = Math.min(left, right);
+            if (left < 0 && right < 0 && caseLevel < 0 && aggregate < 0) {
+                Logs.trace("bose battery payload contained no known components: " + BoseBmap.hex(payload));
+                return;
+            }
             BATTERY.put(key, new int[]{left, right, caseLevel, aggregate});
             MelodyProviderHook.onBoseBattery();
         }
