@@ -238,24 +238,35 @@ public final class MelodyProviderHook {
     static void onBoseMode(int mode) {
         if (!installed || mode < BoseDeviceConfig.MODE_QUIET || mode > BoseDeviceConfig.MODE_CINEMA) return;
         boseMode = mode;
-        confirmedNoiseMode = mode == BoseDeviceConfig.MODE_AWARE
-                ? NOISE_TRANSPARENT
-                : (mode == BoseDeviceConfig.MODE_QUIET && !confirmedAncEnabled
-                ? NOISE_OFF : NOISE_ANC);
-        noiseMode = confirmedNoiseMode;
+        noiseMode = resolveConfirmedMode(true);
         notifyChange(FLAG_NOISE);
+    }
+
+    /**
+     * Silent switching always reports Quiet even when ANC is off, so Quiet with
+     * ANC=0 is the closest supported representation of the user's "off": no
+     * transparency and no noise cancelling.
+     */
+    private static int resolveConfirmedMode(boolean notify) {
+        int mapped;
+        if (boseMode == BoseDeviceConfig.MODE_AWARE) mapped = NOISE_TRANSPARENT;
+        else if (boseMode == BoseDeviceConfig.MODE_QUIET) {
+            mapped = confirmedAncEnabled ? NOISE_ANC : NOISE_OFF;
+        } else mapped = NOISE_ANC;
+        confirmedNoiseMode = mapped;
+        if (notify) {
+            Logs.trace("bose confirmed state mode=" + boseMode
+                    + " anc=" + confirmedAncEnabled + " uiMode=" + mapped);
+        }
+        return mapped;
     }
 
     static void onBoseAudioSettings(byte[] payload) {
         if (!installed || payload == null || payload.length < 5) return;
+        // [31.10] layout: [cnc, autoCNC, spatial, wind, anc]
         confirmedAncEnabled = payload[4] != 0;
         boseNoiseCancellation = confirmedAncEnabled;
-        if (boseMode == BoseDeviceConfig.MODE_QUIET) {
-            confirmedNoiseMode = confirmedAncEnabled ? NOISE_ANC : NOISE_OFF;
-            noiseMode = confirmedNoiseMode;
-        }
-        Logs.trace("bose confirmed ANC=" + confirmedAncEnabled
-                + " uiMode=" + confirmedNoiseMode);
+        noiseMode = resolveConfirmedMode(true);
         notifyChange(FLAG_NOISE);
     }
 

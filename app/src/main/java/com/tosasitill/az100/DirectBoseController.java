@@ -18,6 +18,10 @@ final class DirectBoseController {
     private static final long CONNECT_TIMEOUT_MS = 8_000L;
     private static final long RESPONSE_TIMEOUT_MS = 3_000L;
     private static final long PRESENCE_TTL_MS = 10_000L;
+    private static final long[] RETRY_BACKOFF_MS = new long[]{600L, 1500L, 3000L};
+    private static final int MAX_FAILED_OPENS = 3;
+    private static final long MIN_REQUEST_GAP_MS = 700L;
+    private static final long SETTLE_DELAY_MS = 150L;
     private static final long POST_WRITE_DELAY_MS = 200L;
     private static final ConcurrentHashMap<String, Session> SESSIONS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, int[]> BATTERY = new ConcurrentHashMap<>();
@@ -103,6 +107,8 @@ final class DirectBoseController {
         private boolean wantedSync;
         private Operation operation;
         private boolean workerStarted;
+        private volatile long lastRequestAt;
+        private int failedOpens;
         private volatile boolean synced;
         private boolean syncInFlight;
         private volatile BluetoothSocket socket;
@@ -141,6 +147,17 @@ final class DirectBoseController {
         }
 
         void requestMode(int mode) {
+            synchronized (lock) {
+                // ColorOS can deliver the same tile click several times in one
+                // gesture. One Cambridge radio only tolerates one session, so
+                // merge repeats that arrive inside the current request window.
+                long now = SystemClock.elapsedRealtime();
+                if (wantedMode == mode && now - lastRequestAt < MIN_REQUEST_GAP_MS) {
+                    Logs.trace("bose duplicate click ignored mode=" + mode);
+                    return;
+                }
+                lastRequestAt = now;
+            }
             Logs.trace("bose request mode=" + mode);
             synchronized (lock) {
                 wantedMode = mode;
@@ -212,6 +229,14 @@ final class DirectBoseController {
             }
         }
 
+        private static void sleepQuietly(long millis) {
+            try {
+                Thread.sleep(millis);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
         private void startWorker() {
             if (workerStarted) return;
             workerStarted = true;
@@ -247,13 +272,32 @@ final class DirectBoseController {
                         continue;
                     }
                     if (!open()) {
+                        // The radio refuses a busy RFCOMM link while the other
+                        // client holds the channel. Back off instead of looping
+                        // back-to-back, which is what kept the link unusable.
+                        failedOpens++;
+                        if (failedOpens > MAX_FAILED_OPENS) {
+                            Logs.trace("bose giving up after " + failedOpens + " failed opens");
+                            if (sync) {
+                                synchronized (lock) {
+                                    syncInFlight = false;
+                                }
+                            }
+                            break;
+                        }
                         requeue(mode, currentOperation, sync);
+                        sleepQuietly(RETRY_BACKOFF_MS[Math.min(failedOpens - 1,
+                                RETRY_BACKOFF_MS.length - 1)]);
                         break;
                     }
+                    failedOpens = 0;
                     try {
                         if (mode >= 0) setMode(mode);
                         if (currentOperation != null) apply(currentOperation);
                         if (sync) queryState();
+                        // Let the last reply settle before the socket is torn
+                        // down; closing mid-flight truncatedResponseBody.
+                        sleepQuietly(SETTLE_DELAY_MS);
                     } finally {
                         synchronized (lock) {
                             syncInFlight = false;
