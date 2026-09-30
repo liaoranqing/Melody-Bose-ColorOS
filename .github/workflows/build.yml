@@ -36,10 +36,9 @@ jobs:
         run: sdkmanager --install "platforms;android-36"
 
       - name: Set up Gradle
-        uses: gradle/gradle-build-action@v3
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.3.1'
-          gradle-home-cache-cleanup: true
 
       - name: Run Bose BMAP codec self-test
         run: |
