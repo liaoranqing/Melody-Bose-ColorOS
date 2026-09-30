@@ -254,6 +254,8 @@ public final class MelodyProviderHook {
             confirmedNoiseMode = confirmedAncEnabled ? NOISE_ANC : NOISE_OFF;
             noiseMode = confirmedNoiseMode;
         }
+        Logs.trace("bose confirmed ANC=" + confirmedAncEnabled
+                + " uiMode=" + confirmedNoiseMode);
         notifyChange(FLAG_NOISE);
     }
 

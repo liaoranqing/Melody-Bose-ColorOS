@@ -441,10 +441,17 @@ final class DirectBoseController {
 
         private void setMode(int mode) {
             if (mode == BoseDeviceConfig.MODE_OFF) {
+                // OFF is not a Bose AudioModes preset. It is Quiet with the live
+                // ANC bit disabled; switch to Quiet first, then write ANC=0.
+                if (!switchAudioMode(BoseDeviceConfig.MODE_QUIET)) return;
                 setNoiseCancellation(false);
                 return;
             }
             if (mode < BoseDeviceConfig.MODE_QUIET || mode > BoseDeviceConfig.MODE_CINEMA) return;
+            switchAudioMode(mode);
+        }
+
+        private boolean switchAudioMode(int mode) {
             BoseBmap.Frame answer = command(BoseBmap.BLOCK_AUDIO_MODES,
                     BoseBmap.FUNC_CURRENT_MODE, BoseBmap.OP_START,
                     new byte[]{(byte) mode, 0});
@@ -453,17 +460,22 @@ final class DirectBoseController {
                     && answer.operator != BoseBmap.OP_PROCESSING)) {
                 Logs.trace("bose mode rejected mode=" + mode + " response="
                         + (answer == null ? "timeout" : answer.operator));
-                return;
+                return false;
             }
             BoseBmap.Frame confirmed = command(BoseBmap.BLOCK_AUDIO_MODES,
                     BoseBmap.FUNC_CURRENT_MODE, BoseBmap.OP_GET, null);
             if (confirmed != null && confirmed.payload.length > 0) {
                 int actualMode = confirmed.u8(0);
                 Logs.trace("bose mode readback requested=" + mode + " actual=" + actualMode);
+                if (actualMode != mode) {
+                    Logs.trace("bose mode mismatch requested=" + mode + " actual=" + actualMode);
+                    return false;
+                }
                 MelodyProviderHook.onBoseMode(actualMode);
-            } else {
-                Logs.trace("bose mode not confirmed; keeping last confirmed UI state");
+                return true;
             }
+            Logs.trace("bose mode not confirmed; keeping last confirmed UI state");
+            return false;
         }
 
         private void apply(Operation operation) {
@@ -505,7 +517,14 @@ final class DirectBoseController {
             if (answer.payload.length >= 5) {
                 MelodyProviderHook.onBoseAudioSettings(answer.payload);
             } else {
-                Logs.trace("bose ANC update returned short payload");
+                BoseBmap.Frame confirmed = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
+                        BoseBmap.OP_GET, null);
+                if (confirmed != null && confirmed.payload.length >= 5) {
+                    Logs.trace("bose ANC readback=" + BoseBmap.hex(confirmed.payload));
+                    MelodyProviderHook.onBoseAudioSettings(confirmed.payload);
+                } else {
+                    Logs.trace("bose ANC update returned no valid readback");
+                }
             }
         }
 
