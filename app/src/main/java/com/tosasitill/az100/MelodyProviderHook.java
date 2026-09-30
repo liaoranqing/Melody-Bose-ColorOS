@@ -62,11 +62,12 @@ public final class MelodyProviderHook {
     private static final int NOISE_OFF = 1;
     private static final int NOISE_ANC = 5;
     private static final int NOISE_TRANSPARENT = 2;
-    /** Only expose modes that have a real, verified Bose operation. */
-    private static final String SUPPORTS = "[5,2]";
+    /** ColorOS cycles through these ids in its fixed order: off, ANC, transparent. */
+    private static final String SUPPORTS = "[1,5,2]";
     private static volatile int boseMode = BoseDeviceConfig.MODE_AWARE;
     private static volatile boolean boseNoiseCancellation = true;
     private static volatile int confirmedNoiseMode = NOISE_TRANSPARENT;
+    private static volatile boolean confirmedAncEnabled = true;
 
     /** Notification flags: the high byte selects the callback inside SystemUI. */
     private static final int FLAG_NOISE = 0x200;
@@ -238,16 +239,21 @@ public final class MelodyProviderHook {
         if (!installed || mode < BoseDeviceConfig.MODE_QUIET || mode > BoseDeviceConfig.MODE_CINEMA) return;
         boseMode = mode;
         confirmedNoiseMode = mode == BoseDeviceConfig.MODE_AWARE
-                ? NOISE_TRANSPARENT : NOISE_ANC;
+                ? NOISE_TRANSPARENT
+                : (mode == BoseDeviceConfig.MODE_QUIET && !confirmedAncEnabled
+                ? NOISE_OFF : NOISE_ANC);
         noiseMode = confirmedNoiseMode;
         notifyChange(FLAG_NOISE);
     }
 
     static void onBoseAudioSettings(byte[] payload) {
         if (!installed || payload == null || payload.length < 5) return;
-        boseNoiseCancellation = payload[4] != 0;
-        // The supported ColorOS choices are Aware and Quiet/ANC; there is no
-        // confirmed Bose operation that provides a true ANC-off state here.
+        confirmedAncEnabled = payload[4] != 0;
+        boseNoiseCancellation = confirmedAncEnabled;
+        if (boseMode == BoseDeviceConfig.MODE_QUIET) {
+            confirmedNoiseMode = confirmedAncEnabled ? NOISE_ANC : NOISE_OFF;
+            noiseMode = confirmedNoiseMode;
+        }
         notifyChange(FLAG_NOISE);
     }
 
@@ -349,15 +355,13 @@ public final class MelodyProviderHook {
         DirectBoseController.syncOnce(ctx, BoseDeviceConfig.MAC);
     }
 
-    /** Only enqueue supported modes; the UI changes after a confirmed read-back. */
+    /** Enqueue a mode change; the UI changes only after a confirmed read-back. */
     private static void applyBose(int mode) {
         int target;
         if (mode == NOISE_ANC) target = BoseDeviceConfig.MODE_QUIET;
         else if (mode == NOISE_TRANSPARENT) target = BoseDeviceConfig.MODE_AWARE;
-        else {
-            Logs.trace("bose unsupported native mode click=" + mode + "; keeping confirmed state");
-            return;
-        }
+        else if (mode == NOISE_OFF) target = BoseDeviceConfig.MODE_OFF;
+        else return;
         Logs.trace("bose melody click mode=" + mode + " target=" + target);
         Context ctx = context;
         if (ctx != null) DirectBoseController.requestMode(ctx, BoseDeviceConfig.MAC, target);
