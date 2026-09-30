@@ -30,9 +30,9 @@ jobs:
           # Do not request the deprecated `tools` package.
           packages: ''
 
-      - name: Install Android SDK platform
+      - name: Install Android 17 preview SDK platform
         shell: bash
-        run: sdkmanager --install "platforms;android-37"
+        run: sdkmanager --channel=1 --install "platforms;android-37"
 
       - name: Set up Gradle
         uses: gradle/gradle-build-action@v3
