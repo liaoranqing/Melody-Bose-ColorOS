@@ -14,28 +14,21 @@ Ultra 2 映射为系统音量面板中的耳机设备。
 
 ## 面板模式
 
-面板支持四项：
+面板只支持三项：
 
 1. 关闭：Bose Quiet 模式配合 ANC 关闭（通过 [31.10] AudioSettings）
 2. 降噪：Bose Quiet（模式索引 0，最大降噪）
 3. 通透：Bose Aware（模式索引 1）
-4. 沉浸式音频：Bose Immersion（模式索引 2）
 
-ColorOS 内部模式顺序固定为 `[1, 5, 10, 2]`，`supports` 使用同一顺序筛选，确保四个槽位分别对应以上功能。
-
-Bose Cinema（索引 3）使用同一个 ColorOS 模式槽位，当前不单独增加第五个
-磁贴，避免 ColorOS 固定轮换逻辑丢失。
+ColorOS 内部模式顺序仅暴露 `[1, 5, 2]`，分别对应关闭、降噪、通透；不暴露自适应、沉浸式音频或 Cinema。
 
 ## 已实现的控制层
 
 - BMAP 4 字节帧编解码、半包/粘包解析、响应地址匹配
 - RFCOMM 短连接，避免 Bose Music 与 Melody 长时间争用链路
-- 当前模式 GET 与四模式 START 切换
+- 当前模式 GET 与 Quiet/Aware 模式 START 切换
 - 左耳、右耳、充电盒、双耳合计电量解析
-- EQ 三频段 SETGET 接口
-- 自动暂停开关 SETGET 接口
-- 语音提示开关 SETGET 接口
-- CNC/AudioSettings 读取保持并写回的接口
+- CNC/AudioSettings 读取保持并写回的接口，用于调节降噪挡位
 - Melody Provider active/noise/battery 查询、点击和刷新通知
 - ACL 连接状态监听、短连接失败日志和模式回读
 

@@ -62,10 +62,8 @@ public final class MelodyProviderHook {
     private static final int NOISE_OFF = 1;
     private static final int NOISE_ANC = 5;
     private static final int NOISE_TRANSPARENT = 2;
-    /** ColorOS id 10 is used for Bose Immersion. */
-    private static final int NOISE_IMMERSION = 10;
-    /** Filter ColorOS's native cycle [1, 5, 10, 2] down to Bose's four modes. */
-    private static final String SUPPORTS = "[1,5,10,2]";
+    /** Only the three modes requested by the user are exposed to ColorOS. */
+    private static final String SUPPORTS = "[1,5,2]";
     private static volatile int boseMode = BoseDeviceConfig.MODE_AWARE;
     private static volatile boolean boseNoiseCancellation = true;
 
@@ -138,13 +136,10 @@ public final class MelodyProviderHook {
         String path = uri == null ? null : uri.getPath();
         if (path == null) return null;
         if (PATH_ACTIVE.equals(path)) {
-            if (hasRow(result)) {
-                return null;
-            }
-            // A non-null row is what makes SystemUI build an ActiveDevice.
-            // Bose has no reliable real-time wear sensor in the public BMAP data,
-            // so this announces only ACL connection as a conservative hint.
+            // Always return one stable Bose row. Returning Melody's row when the
+            // Bose app refreshes its own state makes SystemUI lose the tile.
             announceBoseReachable();
+            closeCursor(result);
             return activeCursor();
         }
         if (PATH_BATTERY.equals(path)) {
@@ -195,18 +190,14 @@ public final class MelodyProviderHook {
     }
 
     private static void applyBoseSettings(Bundle extras) {
-        String action = extras.getString("action", "");
-        if ("eq".equals(action)) {
-            int bass = clampEq(extras.getInt("first"));
-            int mid = clampEq(extras.getInt("second"));
-            int treble = clampEq(extras.getInt("third"));
-            DirectBoseController.setEq(context, bass, mid, treble);
-        } else if ("auto_pause".equals(action)) {
-            DirectBoseController.setAutoPause(context, extras.getInt("first") != 0);
-        } else if ("prompts".equals(action)) {
-            DirectBoseController.setVoicePrompts(context, extras.getInt("first") != 0);
-        } else if ("cnc".equals(action)) {
-            DirectBoseController.setCnc(context, Math.max(0, Math.min(10, extras.getInt("first"))));
+        try {
+            String action = extras.getString("action", "");
+            if ("cnc".equals(action)) {
+                DirectBoseController.setCnc(context,
+                        Math.max(0, Math.min(10, extras.getInt("first"))));
+            }
+        } catch (Throwable error) {
+            Logs.e("bose control request failed", error);
         }
     }
 
@@ -229,8 +220,6 @@ public final class MelodyProviderHook {
 
     private static int boseMelodyMode() {
         if (boseMode == BoseDeviceConfig.MODE_AWARE) return NOISE_TRANSPARENT;
-        if (boseMode == BoseDeviceConfig.MODE_IMMERSION) return NOISE_IMMERSION;
-        if (boseMode == BoseDeviceConfig.MODE_CINEMA) return NOISE_IMMERSION;
         if (boseMode == BoseDeviceConfig.MODE_QUIET) {
             return boseNoiseCancellation ? NOISE_ANC : NOISE_OFF;
         }
@@ -335,8 +324,13 @@ public final class MelodyProviderHook {
         }
     }
 
-    private static boolean hasRow(Cursor cursor) {
-        return cursor != null && cursor.getCount() > 0;
+    private static void closeCursor(Cursor cursor) {
+        if (cursor == null) return;
+        try {
+            cursor.close();
+        } catch (Throwable error) {
+            Logs.d("melody cursor close failed", error);
+        }
     }
 
     /* ------------------------------------------------------------------ */
@@ -355,7 +349,6 @@ public final class MelodyProviderHook {
         int target;
         if (mode == NOISE_ANC) target = BoseDeviceConfig.MODE_QUIET;
         else if (mode == NOISE_TRANSPARENT) target = BoseDeviceConfig.MODE_AWARE;
-        else if (mode == NOISE_IMMERSION) target = BoseDeviceConfig.MODE_IMMERSION;
         else target = BoseDeviceConfig.MODE_OFF;
         boseMode = target == BoseDeviceConfig.MODE_OFF
                 ? BoseDeviceConfig.MODE_QUIET : target;
@@ -372,7 +365,10 @@ public final class MelodyProviderHook {
         Context ctx = context;
         boolean reachable = ctx != null
                 && DirectBoseController.reachable(ctx, BoseDeviceConfig.MAC);
-        announceBoseWear(reachable);
+        // Do not clear the tile because a synchronous presence probe can briefly
+        // fail while the Bose app is open. An explicit ACL_DISCONNECTED broadcast
+        // is the authoritative path for clearing the state.
+        if (reachable) announceBoseWear(true);
         return reachable;
     }
 
