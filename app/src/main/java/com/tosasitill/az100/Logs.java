@@ -11,26 +11,21 @@ import de.robv.android.xposed.XposedBridge;
 /**
  * Single logging gate.
  *
- * Hot paths (hooks that run per frame / per device render) must never build a
- * message unless {@link #DEBUG} is on: {@code if (Logs.DEBUG) Logs.d("...")}
- * compiles to a single static-field read when DEBUG is false.  {@link #i} is
- * only for a handful of one-shot events so a broken install stays diagnosable.
+ * Hot paths must never build a message unless {@link #DEBUG} is on. The
+ * {@link #trace} channel records Bose BMAP link events and operations under
+ * {@code MelodyEarphone}, while one-shot lifecycle errors also go through
+ * LSPosed logging:
  *
- * {@link #trace} is for the Airoha link only (a handful of calls per session).
- * It goes to logcat under tag {@code AZ100} -- unlike {@link #i}, which goes
- * through LSPosed and is only mirrored to logcat when the module's verbose log
- * is enabled in LSPosed Manager:
- *
- * <pre>adb logcat -s AZ100:V</pre>
+ * <pre>adb logcat -s MelodyEarphone:V</pre>
  */
 final class Logs {
 
     /** Flip to true, rebuild and reinstall for verbose LSPosed logging. */
     static final boolean DEBUG = false;
 
-    static final String TAG = "Az100LSPosed";
+    static final String TAG = "MelodyEarphone";
 
-    static final String TRACE_TAG = "AZ100";
+    static final String TRACE_TAG = "MelodyEarphone";
 
     private static volatile File traceFile;
     private static volatile boolean traceOpened;
@@ -43,7 +38,7 @@ final class Logs {
      */
     static void traceToFile(File directory) {
         if (directory == null) return;
-        traceFile = new File(directory, "az100.log");
+        traceFile = new File(directory, "bose-melody.log");
     }
 
     private Logs() {

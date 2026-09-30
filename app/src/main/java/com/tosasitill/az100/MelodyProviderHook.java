@@ -22,25 +22,17 @@ import de.robv.android.xposed.XposedHelpers;
  *
  * <pre>
  *   query .../melody_method_active_device
- *          -&gt; name, address                       (which earphone is shown)
+ *          -&gt; name, address                       (active Bose device)
  *   query .../melody_method_noise_reduction, selection=address, args=[mac]
- *          -&gt; name, address, type, supports       (type = current mode,
- *                                                  supports = JSON mode list)
- *   call  melody_method_noise_reduction {name, address, type}   (the click)
- *   notify(base uri, flags) with 0x200 (mode changed) or 0x500 (wear changed,
- *          low byte carries 0x10 left / 0x1 right)
+ *          -&gt; name, address, type, supports       (current mode and cycle)
+ *   call  melody_method_noise_reduction {name, address, type}   (mode change)
+ *   notify(base uri, flags) with 0x200 (mode) or 0x500 (ACL reachability hint)
  * </pre>
  *
- * Melody knows nothing about the AZ100, so all of those are misses: no active
- * device, no support list, no wear state -- and the tile hides itself (the
- * "invisible control" the user started with) or refuses every click.  The
- * answers are therefore produced here, inside Melody's own process, and the
- * headset is driven by the same Airoha session the module uses elsewhere
- * ({@link DirectAirohaController}).
- *
- * That is also why nothing of this runs in SystemUI: during a panel render the
- * module only reacts to binder calls that arrive at this provider, and the
- * headset work happens on the Airoha worker thread owned by this process.
+ * Melody does not expose the Bose BMAP device as its native earphone, so this
+ * module supplies the active-device and mode rows inside Melody's process and
+ * sends the operations through the short-lived Bose RFCOMM controller.
+ * SystemUI and the Bose app are not injected or modified.
  *
  * The tile's rules were read from the stock code, not guessed:
  * <ul>
@@ -51,7 +43,7 @@ import de.robv.android.xposed.XposedHelpers;
  *   <li>{@code handleUpdateState()} sets the tile state to 0 only while there is
  *       no active device, which is what greyed it out;</li>
  *   <li>the cycle is fixed in the tile ({@code [1, 5, 10, 2]}) and filtered by
- *       the support list, so leaving 10 out removes 自适应 from the panel.</li>
+ *       the support list to expose four mapped Bose modes.</li>
  * </ul>
  */
 public final class MelodyProviderHook {
@@ -60,21 +52,22 @@ public final class MelodyProviderHook {
     private static final String BASE_URI = "content://" + PROVIDER;
     private static final String PATH_ACTIVE = "/melody_method_active_device";
     private static final String PATH_NOISE = "/melody_method_noise_reduction";
-    /**
-     * Module-private read of the cached battery.  SystemUI never asks for it;
-     * the Melody-side page does, because the Airoha link lives in this process
-     * while that page runs in Melody's {@code :fg} process.
-     */
-    private static final String PATH_BATTERY = "/melody_method_az100_battery";
+    /** Module-private cached battery data for the Bose detail surface. */
+    private static final String PATH_BATTERY = "/melody_method_bose_battery";
     private static final String METHOD_NOISE = "melody_method_noise_reduction";
     private static final String METHOD_WEAR = "melody_method_control_wear";
+    private static final String METHOD_BOSE_SETTINGS = "melody_method_bose_settings";
 
-    /** Melody's noise ids; see the qs_noise_reduction_* strings. */
+    /** Provider mode ids from the ColorOS noise-reduction tile contract. */
     private static final int NOISE_OFF = 1;
     private static final int NOISE_ANC = 5;
     private static final int NOISE_TRANSPARENT = 2;
-    /** Modes the tile may cycle through -- 自适应 (10) is left out on purpose. */
-    private static final String SUPPORTS = "[1,5,2]";
+    /** ColorOS id 10 is used for Bose Immersion. */
+    private static final int NOISE_IMMERSION = 10;
+    /** Filter ColorOS's native cycle [1, 5, 10, 2] down to Bose's four modes. */
+    private static final String SUPPORTS = "[1,5,10,2]";
+    private static volatile int boseMode = BoseDeviceConfig.MODE_AWARE;
+    private static volatile boolean boseNoiseCancellation = true;
 
     /** Notification flags: the high byte selects the callback inside SystemUI. */
     private static final int FLAG_NOISE = 0x200;
@@ -86,24 +79,11 @@ public final class MelodyProviderHook {
      * flag is for: fresh battery levels have arrived.
      */
     private static final int FLAG_BATTERY = 0x600;
-    /** Wear bits of the low byte: 0x10 left, 0x1 right. */
-    private static final int WEAR_BITS = 0x11;
-    /**
-     * After a wear transition, repeat the notification a couple of times.
-     * SystemUI may register its observer just after the transition. Repeating
-     * for the whole connection wakes SystemUI on every provider query, so the
-     * window is short.
-     */
-    private static final long WEAR_HEARTBEAT_MS = 10_000L;
-    private static final long WEAR_HEARTBEAT_WINDOW_MS = 30_000L;
-
     private static volatile Context context;
-    private static volatile int noiseMode = NOISE_OFF;
+    private static volatile int noiseMode = NOISE_TRANSPARENT;
     /** Set once the wear state has been announced, cleared when the buds go. */
+    /** ACL link state only; BMAP does not expose live wearing sensor data. */
     private static volatile boolean worn;
-    private static volatile long lastWearAt;
-    /** When the wear flag last actually changed. Heartbeats stop after the window. */
-    private static volatile long wearChangedAt;
     private static volatile boolean installed;
 
     private MelodyProviderHook() {
@@ -135,8 +115,7 @@ public final class MelodyProviderHook {
                             }
                         }
                     });
-            hookMelodyBluetoothReceiver(loader);
-            watchAz100Connection(ctx);
+            hookBoseConnection(ctx);
             hookBatteryProvider(loader);
             Logs.trace("melody hooks installed");
             Logs.i("melody provider hooks installed");
@@ -159,13 +138,13 @@ public final class MelodyProviderHook {
         String path = uri == null ? null : uri.getPath();
         if (path == null) return null;
         if (PATH_ACTIVE.equals(path)) {
-            if (hasRow(result)) return null;           // Melody knows a real earphone
-            // A non-null row is what makes SystemUI build an ActiveDevice at
-            // all; whether the controls are really shown is decided by the
-            // wear flag alone (see announceWear).  Answering unconditionally
-            // also covers a stale "explicitly gone" ACL hint left over from a
-            // disconnect that happened before this process started.
-            announceReachable();
+            if (hasRow(result)) {
+                return null;
+            }
+            // A non-null row is what makes SystemUI build an ActiveDevice.
+            // Bose has no reliable real-time wear sensor in the public BMAP data,
+            // so this announces only ACL connection as a conservative hint.
+            announceBoseReachable();
             return activeCursor();
         }
         if (PATH_BATTERY.equals(path)) {
@@ -175,14 +154,10 @@ public final class MelodyProviderHook {
         }
         if (PATH_NOISE.equals(path)) {
             if (!"address".equals(selection) || args == null || args.length == 0) return null;
-            if (!Az100Hook.isAz100Mac(args[0])) return null;
-            // 2+ entries in "noise" is the second isAvailable() condition;
-            // the panel only ever asks with the address it got from us.
-            announceReachable();
-            // SystemUI hits this from media-route callbacks, not only when the
-            // panel is open. syncOnce latches, so this cannot redial.
-            syncIfNeeded();
-            return noiseCursor();
+            if (!BoseDeviceConfig.isMac(args[0])) return null;
+            announceBoseReachable();
+            DirectBoseController.syncOnce(context, BoseDeviceConfig.MAC);
+            return boseNoiseCursor();
         }
         return null;
     }
@@ -190,64 +165,134 @@ public final class MelodyProviderHook {
     /** A click in the panel arrives as a call on the provider. */
     private static boolean onCall(String method, Bundle extras) {
         if (extras == null) return false;
-        String address = extras.getString("address");
-        if (!Az100Hook.isAz100Mac(address)) return false;
-        if (METHOD_NOISE.equals(method)) {
-            apply(extras.getInt("type", NOISE_OFF));
+        if (METHOD_BOSE_SETTINGS.equals(method)) {
+            applyBoseSettings(extras);
             return true;
         }
-        if (METHOD_WEAR.equals(method)) {
-            // SystemUI asks whether wear detection should be watched; the AZ100
-            // reports its own state, which is pushed through the notifications.
-            return true;
+        String address = extras.getString("address");
+        if (BoseDeviceConfig.isMac(address)) {
+            if (METHOD_NOISE.equals(method)) {
+                applyBose(extras.getInt("type", NOISE_OFF));
+                return true;
+            }
+            if (METHOD_WEAR.equals(method)) return true;
         }
         return false;
     }
 
+    static void configureBose(Context ctx, String action, int first, int second, int third) {
+        if (ctx == null) return;
+        Bundle extras = new Bundle();
+        extras.putString("action", action);
+        extras.putInt("first", first);
+        extras.putInt("second", second);
+        extras.putInt("third", third);
+        try {
+            ctx.getContentResolver().call(Uri.parse(BASE_URI), METHOD_BOSE_SETTINGS, null, extras);
+        } catch (Throwable error) {
+            Logs.e("bose settings call failed", error);
+        }
+    }
+
+    private static void applyBoseSettings(Bundle extras) {
+        String action = extras.getString("action", "");
+        if ("eq".equals(action)) {
+            int bass = clampEq(extras.getInt("first"));
+            int mid = clampEq(extras.getInt("second"));
+            int treble = clampEq(extras.getInt("third"));
+            DirectBoseController.setEq(context, bass, mid, treble);
+        } else if ("auto_pause".equals(action)) {
+            DirectBoseController.setAutoPause(context, extras.getInt("first") != 0);
+        } else if ("prompts".equals(action)) {
+            DirectBoseController.setVoicePrompts(context, extras.getInt("first") != 0);
+        } else if ("cnc".equals(action)) {
+            DirectBoseController.setCnc(context, Math.max(0, Math.min(10, extras.getInt("first"))));
+        }
+    }
+
+    private static int clampEq(int value) {
+        return Math.max(-10, Math.min(10, value));
+    }
+
     private static Cursor activeCursor() {
         MatrixCursor cursor = new MatrixCursor(new String[]{"name", "address"});
-        cursor.addRow(new Object[]{Az100Hook.AZ100_NAME, Az100Hook.AZ100_MAC});
+        cursor.addRow(new Object[]{BoseDeviceConfig.NAME, BoseDeviceConfig.MAC});
         return cursor;
     }
 
-    private static Cursor noiseCursor() {
-        MatrixCursor cursor =
-                new MatrixCursor(new String[]{"name", "address", "type", "supports"});
-        cursor.addRow(new Object[]{Az100Hook.AZ100_NAME, Az100Hook.AZ100_MAC,
-                Integer.valueOf(noiseMode), SUPPORTS});
+    private static Cursor boseNoiseCursor() {
+        MatrixCursor cursor = new MatrixCursor(new String[]{"name", "address", "type", "supports"});
+        cursor.addRow(new Object[]{BoseDeviceConfig.NAME, BoseDeviceConfig.MAC,
+                Integer.valueOf(boseMelodyMode()), SUPPORTS});
         return cursor;
     }
 
-    /** Cached battery as a cursor: left, right, case; -1 = not reported yet. */
+    private static int boseMelodyMode() {
+        if (boseMode == BoseDeviceConfig.MODE_AWARE) return NOISE_TRANSPARENT;
+        if (boseMode == BoseDeviceConfig.MODE_IMMERSION) return NOISE_IMMERSION;
+        if (boseMode == BoseDeviceConfig.MODE_CINEMA) return NOISE_IMMERSION;
+        if (boseMode == BoseDeviceConfig.MODE_QUIET) {
+            return boseNoiseCancellation ? NOISE_ANC : NOISE_OFF;
+        }
+        return NOISE_OFF;
+    }
+
+    static int boseModeCache() {
+        return boseMode;
+    }
+
+    /** Cached battery as a cursor: left, right, case and aggregate. */
     private static Cursor batteryCursor() {
-        int[] values = DirectAirohaController.cachedBattery(Az100Hook.AZ100_MAC);
+        int[] values = DirectBoseController.cachedBattery(BoseDeviceConfig.MAC);
         MatrixCursor cursor = new MatrixCursor(
-                new String[]{"name", "address", "left", "right", "case"});
-        cursor.addRow(new Object[]{Az100Hook.AZ100_NAME, Az100Hook.AZ100_MAC,
+                new String[]{"name", "address", "left", "right", "case", "aggregate"});
+        cursor.addRow(new Object[]{BoseDeviceConfig.NAME, BoseDeviceConfig.MAC,
                 Integer.valueOf(values == null ? -1 : values[0]),
                 Integer.valueOf(values == null ? -1 : values[1]),
-                Integer.valueOf(values == null ? -1 : values[2])});
+                Integer.valueOf(values == null ? -1 : values[2]),
+                Integer.valueOf(values == null || values.length < 4 ? -1 : values[3])});
         return cursor;
     }
 
-    /**
-     * Battery levels arrived on this process's Airoha link: let the Melody-side
-     * control page reload them (it reads the module-private battery query in
-     * {@link #batteryCursor()}).
-     */
-    static void onHeadsetBattery() {
+    /** Battery levels arrived on the Bose BMAP link; refresh Melody's page. */
+    static void onBoseBattery() {
         if (!installed) return;
         notifyChange(FLAG_BATTERY);
         notifyBatteryProvider();
     }
 
+    static void onBoseMode(int mode) {
+        if (!installed || mode < BoseDeviceConfig.MODE_QUIET || mode > BoseDeviceConfig.MODE_CINEMA) return;
+        boseMode = mode;
+        noiseMode = boseMelodyMode();
+        notifyChange(FLAG_NOISE);
+    }
 
-    /**
-     * Settings reads {@code content://com.oplus.melody.BatteryProvider}.
-     * Its columns are only mac, left and right; the case has no column there.
-     * A query with no selection lists every known headset, so the AZ100 row is
-     * appended.  A query that already names this mac replaces that row.
-     */
+    static void onBoseAudioSettings(byte[] payload) {
+        if (!installed || payload == null || payload.length < 5) return;
+        boseNoiseCancellation = payload[4] != 0;
+        noiseMode = boseMelodyMode();
+        notifyChange(FLAG_NOISE);
+    }
+
+    static void setBoseEq(int bass, int mid, int treble) {
+        DirectBoseController.setEq(context, bass, mid, treble);
+    }
+
+    static void setBoseAutoPause(boolean enabled) {
+        DirectBoseController.setAutoPause(context, enabled);
+    }
+
+    static void setBoseVoicePrompts(boolean enabled) {
+        DirectBoseController.setVoicePrompts(context, enabled);
+    }
+
+    static void setBoseCnc(int level) {
+        DirectBoseController.setCnc(context, level);
+    }
+
+
+    /** Hook the Melody battery provider to expose cached Bose earbud levels. */
     private static void hookBatteryProvider(ClassLoader loader) {
         try {
             Class<?> provider = XposedHelpers.findClass(
@@ -268,44 +313,15 @@ public final class MelodyProviderHook {
     }
 
     private static Cursor patchBattery(String[] args, Cursor result) {
-        int[] values = DirectAirohaController.cachedBattery(Az100Hook.AZ100_MAC);
-        if (values == null) return null;
-        int left = values.length > 0 ? values[0] : -1;
-        int right = values.length > 1 ? values[1] : -1;
-        if (left < 0 && right < 0) return null;
-        boolean named = false;
-        if (args != null) {
-            for (String arg : args) {
-                if (Az100Hook.isAz100Mac(arg)) {
-                    named = true;
-                    break;
-                }
-            }
-        }
-        if (named) {
-            MatrixCursor cursor = new MatrixCursor(
-                    new String[]{"macAddress", "headsetLeftBattery", "headsetRightBattery"});
-            cursor.addRow(new Object[]{Az100Hook.AZ100_MAC,
-                    Integer.valueOf(Math.max(left, 0)), Integer.valueOf(Math.max(right, 0))});
-            return cursor;
-        }
-        if (result == null) return null;
+        int[] values = DirectBoseController.cachedBattery(BoseDeviceConfig.MAC);
+        if (values == null || values.length < 2 || (values[0] < 0 && values[1] < 0)) return null;
         MatrixCursor cursor = new MatrixCursor(
                 new String[]{"macAddress", "headsetLeftBattery", "headsetRightBattery"});
-        int mac = result.getColumnIndex("macAddress");
-        int leftCol = result.getColumnIndex("headsetLeftBattery");
-        int rightCol = result.getColumnIndex("headsetRightBattery");
-        if (mac >= 0 && result.moveToFirst()) {
-            do {
-                cursor.addRow(new Object[]{result.getString(mac),
-                        Integer.valueOf(leftCol < 0 ? 0 : result.getInt(leftCol)),
-                        Integer.valueOf(rightCol < 0 ? 0 : result.getInt(rightCol))});
-            } while (result.moveToNext());
-        }
-        cursor.addRow(new Object[]{Az100Hook.AZ100_MAC,
-                Integer.valueOf(Math.max(left, 0)), Integer.valueOf(Math.max(right, 0))});
+        cursor.addRow(new Object[]{BoseDeviceConfig.MAC,
+                Integer.valueOf(Math.max(values[0], 0)), Integer.valueOf(Math.max(values[1], 0))});
         return cursor;
     }
+
 
     /** Settings observes the provider URI; the flag value is not interpreted. */
     private static void notifyBatteryProvider() {
@@ -327,143 +343,68 @@ public final class MelodyProviderHook {
     /* state                                                               */
     /* ------------------------------------------------------------------ */
 
-    /**
-     * One read-back per connection, so a panel opened after the buds were
-     * switched on the headset itself still shows the current mode. Further
-     * queries return {@link #noiseMode} and do not page the headset.
-     */
+    /** One read-back per ACL session; provider queries must not open RFCOMM repeatedly. */
     private static void syncIfNeeded() {
         Context ctx = context;
         if (ctx == null) return;
-        DirectAirohaController.syncOnce(ctx, Az100Hook.AZ100_MAC);
+        DirectBoseController.syncOnce(ctx, BoseDeviceConfig.MAC);
     }
 
     /** A mode the user picked in the panel: local state, then the headset. */
-    private static void apply(int mode) {
+    private static void applyBose(int mode) {
+        int target;
+        if (mode == NOISE_ANC) target = BoseDeviceConfig.MODE_QUIET;
+        else if (mode == NOISE_TRANSPARENT) target = BoseDeviceConfig.MODE_AWARE;
+        else if (mode == NOISE_IMMERSION) target = BoseDeviceConfig.MODE_IMMERSION;
+        else target = BoseDeviceConfig.MODE_OFF;
+        boseMode = target == BoseDeviceConfig.MODE_OFF
+                ? BoseDeviceConfig.MODE_QUIET : target;
+        boseNoiseCancellation = target != BoseDeviceConfig.MODE_OFF;
         noiseMode = mode;
-        Logs.trace("melody click mode=" + mode);
+        Logs.trace("bose melody click mode=" + mode + " target=" + target);
         Context ctx = context;
-        if (ctx != null) {
-            DirectAirohaController.request(ctx, Az100Hook.AZ100_MAC, airohaStatus(mode));
-        }
-        // Let SystemUI re-read the label right away; if the headset refuses the
-        // command its own report arrives later and corrects this again.  The
-        // same notification is what repaints the Melody-side control page.
+        if (ctx != null) DirectBoseController.requestMode(ctx, BoseDeviceConfig.MAC, target);
+        else syncIfNeeded();
         notifyChange(FLAG_NOISE);
     }
 
-    /**
-     * Mode the headset reported (see {@link Az100Hook#onAirohaMode}).  Runs in
-     * whichever process owns the link, hence the {@code installed} guard.
-     */
-    static void onHeadsetMode(int airohaStatus) {
-        if (!installed) return;
-        int mode = melodyMode(airohaStatus);
-        if (mode == noiseMode) return;
-        noiseMode = mode;
-        notifyChange(FLAG_NOISE);
-    }
-
-    /**
-     * Query-time wear refresh: every provider interaction is a chance to
-     * re-announce the wear flag, which is the only thing that actually gates
-     * the tile ({@code isAvailable()} checks it as {@code earState != 0}).
-     * The ACL broadcasts keep this cheap; the one-time profile probe of
-     * {@link DirectAirohaController} covers the case where Melody's process
-     * starts after the buds are already connected.
-     */
-    private static boolean announceReachable() {
+    private static boolean announceBoseReachable() {
         Context ctx = context;
         boolean reachable = ctx != null
-                && DirectAirohaController.reachable(ctx, Az100Hook.AZ100_MAC);
-        announceWear(reachable);
+                && DirectBoseController.reachable(ctx, BoseDeviceConfig.MAC);
+        announceBoseWear(reachable);
         return reachable;
     }
 
-    /**
-     * Push the wear flag SystemUI's {@code earState} is built from. A short
-     * repeat covers an observer that registered just after the transition.
-     * It does not keep firing for the rest of the connection.
-     */
-    private static void announceWear(boolean wornNow) {
-        long now = SystemClock.elapsedRealtime();
-        boolean changed = wornNow != worn;
-        if (!changed) {
-            // A few repeats cover a late observer. Then stop, even if SystemUI
-            // keeps querying the provider.
-            if (now - wearChangedAt > WEAR_HEARTBEAT_WINDOW_MS) return;
-            if (now - lastWearAt < WEAR_HEARTBEAT_MS) return;
-        } else {
-            worn = wornNow;
-            wearChangedAt = now;
-            Logs.trace("wear announce worn=" + wornNow);
-        }
-        lastWearAt = now;
-        notifyChange(wornNow ? FLAG_WEAR | WEAR_BITS : FLAG_WEAR);
+    private static void announceBoseWear(boolean connected) {
+        if (connected == worn) return;
+        worn = connected;
+        Logs.trace("bose connection hint=" + connected + " (not a wear sensor)");
+        notifyChange(connected ? FLAG_WEAR | 0x01 : FLAG_WEAR);
     }
 
-    /**
-     * Melody's own manifest receiver is started by the system for an incoming
-     * ACL connect even when the process was dead, so hooking it is the only
-     * event that survives the processes being killed between two sessions.
-     */
-    private static void hookMelodyBluetoothReceiver(final ClassLoader loader) {
-        try {
-            Class<?> receiver =
-                    XposedHelpers.findClass("com.oplus.melody.app.bluetooth.BluetoothBroadcastReceiver",
-                            loader);
-            XposedHelpers.findAndHookMethod(receiver, "onReceive",
-                    Context.class, Intent.class, new XC_MethodHook() {
-                        @Override protected void beforeHookedMethod(MethodHookParam param) {
-                            onMelodyBroadcast((Intent) param.args[1]);
-                        }
-                    });
-        } catch (Throwable t) {
-            Logs.d("melody bt receiver hook failed", t);
-        }
-    }
-
-    private static void onMelodyBroadcast(Intent intent) {
-        if (intent == null) return;
-        String action = intent.getAction();
-        BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-        if (device == null || !Az100Hook.isAz100Mac(device.getAddress())) return;
-        if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(action)) {
-            DirectAirohaController.setPresent(true);
-            announceWear(true);
-            syncIfNeeded();
-        } else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
-            DirectAirohaController.setPresent(false);
-            announceWear(false);
-        }
-    }
-
-    /** Wear state, straight from the ACL broadcast: no polling, no wakeups. */
-    private static void watchAz100Connection(Context ctx) {
+    private static void hookBoseConnection(Context ctx) {
         if (ctx == null) return;
         try {
             IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_ACL_CONNECTED);
             filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
             ctx.registerReceiver(new BroadcastReceiver() {
                 @Override public void onReceive(Context receiver, Intent intent) {
-                    BluetoothDevice device =
-                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                    if (device == null || !Az100Hook.isAz100Mac(device.getAddress())) return;
-                    if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(intent.getAction())) {
-                        DirectAirohaController.setPresent(true);
-                        if (!worn) announceWear(true);
-                        syncIfNeeded();
+                    BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                    if (device == null || !BoseDeviceConfig.isMac(device.getAddress())) return;
+                    boolean connected = BluetoothDevice.ACTION_ACL_CONNECTED.equals(intent.getAction());
+                    DirectBoseController.setPresent(connected);
+                    if (connected) {
+                        announceBoseWear(true);
+                        DirectBoseController.syncOnce(receiver, BoseDeviceConfig.MAC);
                     } else {
-                        // Headset is gone: drop the SPP socket and hide the tile.
-                        DirectAirohaController.setPresent(false);
-                                    DirectAirohaController.disconnect(receiver, Az100Hook.AZ100_MAC,
-                                "acl gone");
-                        if (worn) announceWear(false);
+                        DirectBoseController.disconnect(receiver, BoseDeviceConfig.MAC, "bose acl gone");
+                        announceBoseWear(false);
                     }
                 }
             }, filter);
         } catch (Throwable t) {
-            Logs.e("melody ACL receiver failed", t);
+            Logs.e("bose ACL receiver failed", t);
         }
     }
 
@@ -477,25 +418,5 @@ public final class MelodyProviderHook {
         }
     }
 
-    /* ------------------------------------------------------------------ */
-    /* mode mapping                                                        */
-    /* ------------------------------------------------------------------ */
-
-    /** Melody mode -> Airoha status (2 ANC, 3 ambient, 1 off). */
-    private static int airohaStatus(int mode) {
-        if (mode == NOISE_ANC) return 2;
-        if (mode == NOISE_TRANSPARENT) return 3;
-        return 1;
-    }
-
-    /**
-     * Airoha status -> Melody mode.  自适应 (4) is shown as 降噪: it is the same
-     * noise cancelling with a level that follows the surroundings, which is how
-     * the official app displays it, and the panel no longer offers it.
-     */
-    private static int melodyMode(int airohaStatus) {
-        if (airohaStatus == 2 || airohaStatus == 4) return NOISE_ANC;
-        if (airohaStatus == 3) return NOISE_TRANSPARENT;
-        return NOISE_OFF;
-    }
+    /* Bose-to-ColorOS mode mapping is handled by boseMelodyMode(). */
 }
