@@ -440,10 +440,6 @@ final class DirectBoseController {
         }
 
         private void setMode(int mode) {
-            if (mode == BoseDeviceConfig.MODE_OFF) {
-                setNoiseCancellation(false);
-                return;
-            }
             if (mode < BoseDeviceConfig.MODE_QUIET || mode > BoseDeviceConfig.MODE_CINEMA) return;
             BoseBmap.Frame answer = command(BoseBmap.BLOCK_AUDIO_MODES,
                     BoseBmap.FUNC_CURRENT_MODE, BoseBmap.OP_START,
@@ -458,9 +454,11 @@ final class DirectBoseController {
             BoseBmap.Frame confirmed = command(BoseBmap.BLOCK_AUDIO_MODES,
                     BoseBmap.FUNC_CURRENT_MODE, BoseBmap.OP_GET, null);
             if (confirmed != null && confirmed.payload.length > 0) {
-                MelodyProviderHook.onBoseMode(confirmed.u8(0));
+                int actualMode = confirmed.u8(0);
+                Logs.trace("bose mode readback requested=" + mode + " actual=" + actualMode);
+                MelodyProviderHook.onBoseMode(actualMode);
             } else {
-                MelodyProviderHook.onBoseMode(mode);
+                Logs.trace("bose mode not confirmed; keeping last confirmed UI state");
             }
         }
 
