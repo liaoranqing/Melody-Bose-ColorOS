@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Locale;
+import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Short-lived Bose BMAP RFCOMM controller owned by the Melody process. */
@@ -102,7 +103,7 @@ final class DirectBoseController {
         private boolean wantedSync;
         private Operation operation;
         private boolean workerStarted;
-        private boolean synced;
+        private volatile boolean synced;
         private boolean syncInFlight;
         private volatile BluetoothSocket socket;
         private volatile boolean linkDead;
@@ -132,8 +133,10 @@ final class DirectBoseController {
 
         void onAcl(int state) {
             if (state < 0) {
-                synced = false;
-                syncInFlight = false;
+                synchronized (lock) {
+                    synced = false;
+                    syncInFlight = false;
+                }
             }
         }
 
@@ -156,7 +159,9 @@ final class DirectBoseController {
         }
 
         void syncOnce() {
-            if (synced || syncInFlight) return;
+            synchronized (lock) {
+                if (synced || syncInFlight) return;
+            }
             if (!reachable()) {
                 Logs.trace("bose sync skipped: device not reachable");
                 return;
@@ -199,11 +204,11 @@ final class DirectBoseController {
                 }
                 if (mode >= 0 && wantedMode < 0) wantedMode = mode;
                 if (currentOperation != null && operation == null) operation = currentOperation;
-                    if (sync) {
-                        syncInFlight = false;
-                        synced = false;
-                        wantedSync = true;
-                    }
+                if (sync) {
+                    syncInFlight = false;
+                    synced = false;
+                    wantedSync = true;
+                }
             }
         }
 
@@ -344,7 +349,7 @@ final class DirectBoseController {
                     if (count <= 0) break;
                     total += count;
                     Logs.trace("bose startup bytes discarded=" + count
-                            + " data=" + BoseBmap.hex(java.util.Arrays.copyOf(stale, count)));
+                            + " data=" + BoseBmap.hex(Arrays.copyOf(stale, count)));
                 }
         }
 
@@ -387,45 +392,50 @@ final class DirectBoseController {
 
         private BoseBmap.Frame command(int block, int function, int operator, byte[] payload) {
             synchronized (ioLock) {
-            synchronized (replyLock) {
-                reply = null;
-                replyBlock = block;
-                replyFunction = function;
-            }
-            byte[] packet = BoseBmap.packet(block, function, operator, payload);
-            BluetoothSocket current = socket;
-            if (current == null) return null;
-            try {
-                OutputStream output = current.getOutputStream();
-                output.write(packet);
-                output.flush();
-                Logs.trace("bose tx " + BoseBmap.hex(packet));
-            } catch (Throwable error) {
-                Logs.trace("bose write failed: " + error);
-                return null;
-            }
-                try {
-                    Thread.sleep(POST_WRITE_DELAY_MS);
-                } catch (InterruptedException error) {
-                    Thread.currentThread().interrupt();
-                    return null;
-                }
-                long deadline = SystemClock.elapsedRealtime() + RESPONSE_TIMEOUT_MS;
                 synchronized (replyLock) {
-                while (reply == null && !linkDead && SystemClock.elapsedRealtime() < deadline) {
+                    reply = null;
+                    replyBlock = block;
+                    replyFunction = function;
+                }
+                try {
+                    byte[] packet = BoseBmap.packet(block, function, operator, payload);
+                    BluetoothSocket current = socket;
+                    if (current == null) return null;
                     try {
-                        replyLock.wait(150L);
+                        OutputStream output = current.getOutputStream();
+                        output.write(packet);
+                        output.flush();
+                        Logs.trace("bose tx " + BoseBmap.hex(packet));
+                    } catch (Throwable error) {
+                        Logs.trace("bose write failed: " + error);
+                        return null;
+                    }
+                    try {
+                        Thread.sleep(POST_WRITE_DELAY_MS);
                     } catch (InterruptedException error) {
                         Thread.currentThread().interrupt();
                         return null;
                     }
+                    long deadline = SystemClock.elapsedRealtime() + RESPONSE_TIMEOUT_MS;
+                    synchronized (replyLock) {
+                        while (reply == null && !linkDead
+                                && SystemClock.elapsedRealtime() < deadline) {
+                            try {
+                                replyLock.wait(150L);
+                            } catch (InterruptedException error) {
+                                Thread.currentThread().interrupt();
+                                return null;
+                            }
+                        }
+                        return reply;
+                    }
+                } finally {
+                    synchronized (replyLock) {
+                        reply = null;
+                        replyBlock = -1;
+                        replyFunction = -1;
+                    }
                 }
-                BoseBmap.Frame result = reply;
-                reply = null;
-                replyBlock = -1;
-                replyFunction = -1;
-                return result;
-            }
             }
         }
 

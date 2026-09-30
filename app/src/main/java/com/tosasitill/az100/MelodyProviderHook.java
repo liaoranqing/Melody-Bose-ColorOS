@@ -144,8 +144,8 @@ public final class MelodyProviderHook {
             return activeCursor();
         }
         if (PATH_BATTERY.equals(path)) {
-            // Cache only. A query must not open SPP; the once-per-connection
-            // sync fills the cache.
+            // Cache only. A query must not open a competing BMAP session;
+            // an explicit refresh from the module settings page fills the cache.
             return batteryCursor();
         }
         if (PATH_NOISE.equals(path)) {
@@ -153,7 +153,9 @@ public final class MelodyProviderHook {
             if (!BoseDeviceConfig.isMac(args[0])) return null;
             logCursorColumns("noise", result);
             announceBoseReachable();
-            DirectBoseController.syncOnce(context, BoseDeviceConfig.MAC);
+            // Do not open a competing RFCOMM/BMAP session during every panel refresh.
+            // Bose Music uses the same channel; state is refreshed only by an explicit
+            // user action or immediately after a native mode click.
             closeCursor(result);
             return boseNoiseCursor();
         }
@@ -395,7 +397,6 @@ public final class MelodyProviderHook {
                     DirectBoseController.setPresent(connected);
                     if (connected) {
                         announceBoseWear(true);
-                        DirectBoseController.syncOnce(receiver, BoseDeviceConfig.MAC);
                     } else {
                         // Bose Music can transiently tear down the ACL/RFCOMM link while
                         // changing profiles. Keep the ColorOS tile available; otherwise
