@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  APK_INPUT: "无线耳机_17.6.3.apk.1"
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -26,14 +29,11 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          # The action accepts SDK licenses and installs platform-tools.
-          # Do not request the deprecated `tools` package. API 36 is used
-          # because Android 17's preview SDK package is not available here.
           packages: ''
 
-      - name: Install Android SDK platform 36
+      - name: Install Android SDK platform 36 and build tools
         shell: bash
-        run: sdkmanager --install "platforms;android-36"
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -67,3 +67,45 @@ jobs:
           name: bose-coloros-module-release
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
+
+  # This job is intentionally independent from the Android module build. It
+  # accepts the original Melody APK as an optional workflow artifact upload,
+  # then performs decode/inspection/rebuild preparation on GitHub-hosted tools.
+  # Actual Bose injection remains gated until the original APK is supplied and
+  # the target smali entry points are verified against that exact file.
+  apk-analysis:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Apktool
+        shell: bash
+        run: |
+          curl -L --fail --retry 3 -o apktool.jar \
+            https://github.com/iBotPeaches/Apktool/releases/download/v3.0.1/apktool_3.0.1.jar
+
+      - name: Check for original Melody APK
+        shell: bash
+        run: |
+          if [[ ! -f "$APK_INPUT" ]]; then
+            echo "No $APK_INPUT in repository. Upload it as a workflow artifact/input before running this job."
+            echo "This job does not silently use a local path that GitHub cannot access."
+            exit 1
+          fi
+
+      - name: Decode Melody APK
+        run: java -jar apktool.jar d -f "$APK_INPUT" -o melody-decoded
+
+      - name: Archive decoded APK for local review
+        uses: actions/upload-artifact@v7
+        with:
+          name: melody-17.6.3-decoded
+          path: melody-decoded
