@@ -317,7 +317,15 @@ final class DirectBoseController {
 
         private boolean open() {
             BluetoothSocket existing = socket;
-            if (existing != null && existing.isConnected()) return true;
+            if (existing != null && existing.isConnected() && !linkDead) return true;
+            if (linkDead || existing != null) {
+                // Bose Music (or any other client on channel 2) can silently kill
+                // our link while the socket object still reports connected. Drop the
+                // stale session and reconnect from scratch so a button press recovers
+                // without the user having to power-cycle the headset.
+                Logs.trace("bose cached link stale; forcing reconnect");
+                closeSocket();
+            }
             if (!connectorRunning) {
                 connectorRunning = true;
                 Thread connector = new Thread(new Runnable() {
@@ -413,6 +421,11 @@ final class DirectBoseController {
                         Logs.trace("bose reader stopped: " + error);
                     } finally {
                         linkDead = true;
+                        // The OS BluetoothSocket keeps reporting isConnected()==true
+                        // even after the remote side dropped the link, so a stale
+                        // reference would make open() reuse a dead session. Drop it
+                        // here so the next user action re-establishes a fresh link.
+                        if (current == socket) socket = null;
                         synchronized (replyLock) {
                             replyLock.notifyAll();
                         }
