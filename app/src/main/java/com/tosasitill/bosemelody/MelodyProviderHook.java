@@ -89,6 +89,16 @@ public final class MelodyProviderHook {
     private MelodyProviderHook() {
     }
 
+    static void requestBoseMode(Context ctx, int mode) {
+        if (ctx == null) return;
+        int providerMode = mode == NOISE_ANC ? NOISE_ANC
+                : mode == NOISE_TRANSPARENT ? NOISE_TRANSPARENT : NOISE_OFF;
+        DirectBoseController.requestMode(ctx, BoseDeviceConfig.MAC,
+                providerMode == NOISE_OFF ? BoseDeviceConfig.MODE_OFF
+                        : providerMode == NOISE_ANC ? BoseDeviceConfig.MODE_QUIET
+                        : BoseDeviceConfig.MODE_AWARE);
+    }
+
     public static void install(final ClassLoader loader, Context ctx) {
         synchronized (MelodyProviderHook.class) {
             if (installed) return;
