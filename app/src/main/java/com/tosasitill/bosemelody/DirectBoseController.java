@@ -19,6 +19,15 @@ final class DirectBoseController {
     private static final long CONNECT_TIMEOUT_MS = 4_000L;
     private static final long RESPONSE_TIMEOUT_MS = 3_000L;
     private static final long PRESENCE_TTL_MS = 10_000L;
+    /**
+     * An ACL_DISCONNECTED broadcast fired while Bose Music tears down can be
+     * spurious: the classic link often stays up (or silently re-establishes
+     * without a new ACL_CONNECTED broadcast). A negative presence hint is
+     * therefore only honoured for this TTL; afterwards reachability falls back
+     * to the bonded-device probe instead of dropping every click forever
+     * (the "must force-stop Melody to regain control" symptom).
+     */
+    private static final long ACL_NEGATIVE_TTL_MS = 5_000L;
     private static final long[] RETRY_BACKOFF_MS = new long[]{300L, 800L, 1500L};
     private static final int MAX_FAILED_OPENS = 4;
     private static final long MIN_REQUEST_GAP_MS = 700L;
@@ -36,6 +45,8 @@ final class DirectBoseController {
     private static final ConcurrentHashMap<String, Session> SESSIONS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, int[]> BATTERY = new ConcurrentHashMap<>();
     private static volatile int aclPresent;
+    /** When {@link #aclPresent} was last set; a negative value expires after a TTL. */
+    private static volatile long aclPresentAt;
 
     private DirectBoseController() {
     }
@@ -77,6 +88,7 @@ final class DirectBoseController {
 
     static void setPresent(boolean present) {
         aclPresent = present ? 1 : -1;
+        aclPresentAt = SystemClock.elapsedRealtime();
         Logs.trace("bose acl present=" + present);
         for (Session session : SESSIONS.values()) session.onAcl(aclPresent);
     }
@@ -144,13 +156,20 @@ final class DirectBoseController {
         }
 
         boolean reachable() {
-            if (aclPresent < 0) return false;
             if (aclPresent > 0) return true;
+            // A negative hint only vetoes for a short TTL; afterwards fall
+            // through to the bonded probe, because Bose Music teardown can fire
+            // a spurious ACL_DISCONNECTED while the link is still usable.
+            if (aclPresent < 0 && !aclNegativeExpired()) return false;
             long now = SystemClock.elapsedRealtime();
             if (now - probeAt < PRESENCE_TTL_MS) return probeResult != 0;
             probeAt = now;
             probeResult = probeConnected();
             return probeResult != 0;
+        }
+
+        private static boolean aclNegativeExpired() {
+            return SystemClock.elapsedRealtime() - aclPresentAt > ACL_NEGATIVE_TTL_MS;
         }
 
         void onAcl(int state) {
@@ -330,9 +349,16 @@ final class DirectBoseController {
                         operation = null;
                     }
                     markProgress();
-                    if (mode >= 0 && aclPresent < 0) continue;
-                    if (currentOperation != null && aclPresent < 0) continue;
+                    // NOTE: do not gate on raw `aclPresent < 0` here. Bose Music
+                    // teardown can fire a spurious ACL_DISCONNECTED while the
+                    // classic link stays usable; a permanent negative latch used
+                    // to silently swallow every click until the process died.
+                    // reachable() applies a short TTL to the negative hint and
+                    // falls back to the bonded probe, and it logs the skip.
                     if ((mode >= 0 || currentOperation != null || sync) && !reachable()) {
+                        // Log and drop. Do NOT requeue: an unreachable device would
+                        // make the worker spin hot on requeued requests. The next
+                        // user click retries with a fresh probe.
                         Logs.trace("bose operation skipped: device not reachable");
                         if (sync) {
                             synchronized (lock) {

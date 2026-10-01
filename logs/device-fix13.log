@@ -1,0 +1,119 @@
+1790823980515 battery provider hooked
+1790823980515 melody hooks installed
+1790823980531 bose melody noise columns=null
+1790823980532 bose connection hint=true (not a wear sensor)
+1790823981046 bose melody click mode=1 target=4
+1790823981046 bose request mode=4
+1790823981047 bose connect start channel=2
+1790823981929 bose BMAP link ready 68:F2:1F:3D:41:D7 channel=2
+1790823981929 bose tx 1f 03 05 02 00 00
+1790823982412 bose rx 31.3 op=6 00
+1790823982413 bose tx 1f 03 01 00
+1790823982467 bose rx 31.3 op=3 00
+1790823982614 bose mode readback requested=0 actual=0
+1790823982615 bose tx 1f 0a 01 00
+1790823982685 bose rx 31.10 op=3 00 00 00 00 01
+1790823982816 bose tx 1f 0a 02 05 00 00 00 00 00
+1790823982972 bose rx 31.10 op=3 00 00 00 00 00
+1790823983017 bose ANC update enabled=false payload=00 00 00 00 00
+1790823983017 bose tx 1f 0a 01 00
+1790823983068 bose rx 31.10 op=3 00 00 00 00 00
+1790823983218 bose ANC readback=00 00 00 00 00
+1790823983218 bose confirmed state mode=0 anc=false uiMode=1
+1790823983371 bose reader stopped: java.io.IOException: bt socket closed, read return: -1
+1790823990090 bose acl present=true
+1790823993674 bose acl present=false
+1790823993674 bose release 68:F2:1F:3D:41:D7 reason=bose acl gone
+1790823993674 bose ACL disconnected; keep native control tile available
+1790824030494 bose melody click mode=5 target=0
+1790824030495 bose request mode=0
+1790824043133 bose melody click mode=5 target=0
+1790824043136 bose request mode=0
+1790824045745 bose melody click mode=5 target=0
+1790824045746 bose request mode=0
+1790824071451 bose melody click mode=5 target=0
+1790824071452 bose request mode=0
+1790824089047 bose melody click mode=5 target=0
+1790824089048 bose request mode=0
+1790824089596 bose melody click mode=5 target=0
+1790824089596 bose request mode=0
+1790824089794 bose melody click mode=5 target=0
+1790824089794 bose request mode=0
+1790824089968 bose melody click mode=5 target=0
+1790824089968 bose request mode=0
+1790824090150 bose melody click mode=5 target=0
+1790824090150 bose request mode=0
+1790824104461 bose melody click mode=5 target=0
+1790824104462 bose request mode=0
+1790824104732 bose melody click mode=5 target=0
+1790824104732 bose request mode=0
+1790824104914 bose melody click mode=5 target=0
+1790824104914 bose request mode=0
+1790824105032 bose melody click mode=5 target=0
+1790824105032 bose request mode=0
+1790824114827 bose melody click mode=5 target=0
+1790824114827 bose request mode=0
+1790824115225 bose melody click mode=5 target=0
+1790824115226 bose request mode=0
+1790824115383 bose melody click mode=5 target=0
+1790824115383 bose request mode=0
+1790824116189 bose melody click mode=5 target=0
+1790824116189 bose request mode=0
+1790824116479 bose melody click mode=5 target=0
+1790824116479 bose request mode=0
+1790824116670 bose melody click mode=5 target=0
+1790824116670 bose request mode=0
+1790824116861 bose melody click mode=5 target=0
+1790824116861 bose request mode=0
+1790824117043 bose melody click mode=5 target=0
+1790824117043 bose request mode=0
+1790824117234 bose melody click mode=5 target=0
+1790824117234 bose request mode=0
+1790824117375 bose melody click mode=5 target=0
+1790824117375 bose request mode=0
+1790824117541 bose melody click mode=5 target=0
+1790824117541 bose request mode=0
+1790824117699 bose melody click mode=5 target=0
+1790824117699 bose request mode=0
+1790824117865 bose melody click mode=5 target=0
+1790824117865 bose request mode=0
+1790824118014 bose melody click mode=5 target=0
+1790824118014 bose request mode=0
+1790824118173 bose melody click mode=5 target=0
+1790824118173 bose request mode=0
+1790824118321 bose melody click mode=5 target=0
+1790824118322 bose request mode=0
+1790824118471 bose melody click mode=5 target=0
+1790824118471 bose request mode=0
+1790824118637 bose melody click mode=5 target=0
+1790824118637 bose request mode=0
+1790824118801 bose melody click mode=5 target=0
+1790824118801 bose request mode=0
+1790824118968 bose melody click mode=5 target=0
+1790824118968 bose request mode=0
+1790824119126 bose melody click mode=5 target=0
+1790824119126 bose request mode=0
+1790824119275 bose melody click mode=5 target=0
+1790824119275 bose request mode=0
+1790824119442 bose melody click mode=5 target=0
+1790824119442 bose request mode=0
+1790824119598 bose melody click mode=5 target=0
+1790824119599 bose request mode=0
+1790824119755 bose melody click mode=5 target=0
+1790824119756 bose request mode=0
+1790824119905 bose melody click mode=5 target=0
+1790824119905 bose request mode=0
+1790824120039 bose melody click mode=5 target=0
+1790824120039 bose request mode=0
+1790824120229 bose melody click mode=5 target=0
+1790824120230 bose request mode=0
+1790824120369 bose melody click mode=5 target=0
+1790824120369 bose request mode=0
+1790824120511 bose melody click mode=5 target=0
+1790824120511 bose request mode=0
+1790824120667 bose melody click mode=5 target=0
+1790824120668 bose request mode=0
+1790824120808 bose melody click mode=5 target=0
+1790824120808 bose request mode=0
+1790824121000 bose melody click mode=5 target=0
+1790824121000 bose request mode=0
