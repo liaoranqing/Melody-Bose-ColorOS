@@ -1,0 +1,56 @@
+1790822495426 battery provider hooked
+1790822495426 melody hooks installed
+1790822495438 bose melody noise columns=null
+1790822495439 bose connection hint=true (not a wear sensor)
+1790822496343 bose melody click mode=1 target=4
+1790822496343 bose request mode=4
+1790822496344 bose connect start channel=2
+1790822497627 bose BMAP link ready 68:F2:1F:3D:41:D7 channel=2
+1790822497627 bose tx 1f 03 05 02 00 00
+1790822498104 bose rx 31.3 op=6 00
+1790822498105 bose tx 1f 03 01 00
+1790822498135 bose rx 31.3 op=3 00
+1790822498305 bose mode readback requested=0 actual=0
+1790822498306 bose tx 1f 0a 01 00
+1790822498334 bose rx 31.10 op=3 00 00 00 00 01
+1790822498507 bose tx 1f 0a 02 05 00 00 00 00 00
+1790822498649 bose rx 31.10 op=3 00 00 00 00 00
+1790822498708 bose ANC update enabled=false payload=00 00 00 00 00
+1790822498708 bose tx 1f 0a 01 00
+1790822498739 bose rx 31.10 op=3 00 00 00 00 00
+1790822498908 bose ANC readback=00 00 00 00 00
+1790822498908 bose confirmed state mode=0 anc=false uiMode=1
+1790822499064 bose reader stopped: java.io.IOException: bt socket closed, read return: -1
+1790822500218 bose melody click mode=5 target=0
+1790822500218 bose request mode=0
+1790822500219 bose cached link stale; forcing reconnect
+1790822500219 bose connect start channel=2
+1790822500300 bose BMAP link ready 68:F2:1F:3D:41:D7 channel=2
+1790822500300 bose tx 1f 03 05 02 00 00
+1790822500427 bose rx 31.3 op=6 00
+1790822500501 bose tx 1f 03 01 00
+1790822500529 bose rx 31.3 op=3 00
+1790822500702 bose mode readback requested=0 actual=0
+1790822500702 bose confirmed state mode=0 anc=false uiMode=1
+1790822500703 bose tx 1f 0a 01 00
+1790822500801 bose rx 31.10 op=3 00 00 00 00 01
+1790822500905 bose tx 1f 0a 02 05 00 00 00 00 01
+1790822501049 bose rx 31.10 op=3 00 00 00 00 01
+1790822501105 bose ANC update enabled=true payload=00 00 00 00 01
+1790822501106 bose tx 1f 0a 01 00
+1790822501140 bose rx 31.10 op=3 00 00 00 00 01
+1790822501307 bose ANC readback=00 00 00 00 01
+1790822501307 bose confirmed state mode=0 anc=true uiMode=5
+1790822501461 bose reader stopped: java.io.IOException: bt socket closed, read return: -1
+1790822501758 bose melody click mode=2 target=1
+1790822501758 bose request mode=1
+1790822501759 bose cached link stale; forcing reconnect
+1790822501759 bose connect start channel=2
+1790822501839 bose BMAP link ready 68:F2:1F:3D:41:D7 channel=2
+1790822501840 bose tx 1f 03 05 02 01 00
+1790822501950 bose rx 31.3 op=6 01
+1790822502040 bose tx 1f 03 01 00
+1790822502101 bose rx 31.3 op=3 01
+1790822502241 bose mode readback requested=1 actual=1
+1790822502241 bose confirmed state mode=1 anc=true uiMode=2
+1790822502393 bose reader stopped: java.io.IOException: bt socket closed, read return: -1

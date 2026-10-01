@@ -26,6 +26,13 @@ final class DirectBoseController {
     private static final long POST_WRITE_DELAY_MS = 200L;
     /** A healthy worker never blocks longer than ~9s; past this it is wedged. */
     private static final long WORKER_STUCK_MS = 12_000L;
+    /**
+     * Hard bound on a single socket write. Android's RFCOMM write blocks in
+     * native send() forever on a half-dead link and a close() from another
+     * thread does not reliably interrupt it, so the write is delegated to a
+     * disposable daemon thread that can simply be abandoned.
+     */
+    private static final long WRITE_TIMEOUT_MS = 2_500L;
     private static final ConcurrentHashMap<String, Session> SESSIONS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, int[]> BATTERY = new ConcurrentHashMap<>();
     private static volatile int aclPresent;
@@ -567,15 +574,42 @@ final class DirectBoseController {
                     byte[] packet = BoseBmap.packet(block, function, operator, payload);
                     BluetoothSocket current = socket;
                     if (current == null) return null;
+                    // The write runs on a disposable thread with a hard timeout:
+                    // a native RFCOMM write on a dead link blocks forever and
+                    // cannot always be interrupted by close(), so if it exceeds
+                    // WRITE_TIMEOUT_MS we abandon that thread (daemon, leaked but
+                    // harmless) and release ioLock instead of wedging every
+                    // future command until the whole process is killed.
+                    final BluetoothSocket writeSocket = current;
+                    final byte[] writePacket = packet;
+                    final boolean[] writeOk = {false};
+                    Thread writer = new Thread(new Runnable() {
+                        @Override public void run() {
+                            try {
+                                OutputStream output = writeSocket.getOutputStream();
+                                output.write(writePacket);
+                                output.flush();
+                                writeOk[0] = true;
+                            } catch (Throwable error) {
+                                Logs.trace("bose write failed: " + error);
+                            }
+                        }
+                    }, "bose-bmap-write");
+                    writer.setDaemon(true);
+                    writer.start();
                     try {
-                        OutputStream output = current.getOutputStream();
-                        output.write(packet);
-                        output.flush();
-                        Logs.trace("bose tx " + BoseBmap.hex(packet));
-                    } catch (Throwable error) {
-                        Logs.trace("bose write failed: " + error);
+                        writer.join(WRITE_TIMEOUT_MS);
+                    } catch (InterruptedException error) {
+                        Thread.currentThread().interrupt();
                         return null;
                     }
+                    if (!writeOk[0]) {
+                        Logs.trace("bose write timeout; abandoning writer thread");
+                        linkDead = true;
+                        closeSocket();
+                        return null;
+                    }
+                    Logs.trace("bose tx " + BoseBmap.hex(packet));
                     try {
                         Thread.sleep(POST_WRITE_DELAY_MS);
                     } catch (InterruptedException error) {
