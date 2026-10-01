@@ -151,8 +151,14 @@ public final class MelodyProviderHook {
             return batteryCursor();
         }
         if (PATH_NOISE.equals(path)) {
-            if (!"address".equals(selection) || args == null || args.length == 0) return null;
-            if (!BoseDeviceConfig.isMac(args[0])) return null;
+            // ColorOS 17.6.3 first queries this URI without selection/args.
+            // The stock provider then returns null because its activeEarphone is
+            // null, which makes SystemUI hide the noise-control button. This
+            // module owns the Bose row, so do not require the stock selection
+            // shape; return the Bose row for both the initial and address-scoped
+            // query forms.
+            if (args != null && args.length > 0 && args[0] != null
+                    && !BoseDeviceConfig.isMac(args[0])) return null;
             logCursorColumns("noise", result);
             announceBoseReachable();
             // Do not open a competing RFCOMM/BMAP session during every panel refresh.
