@@ -324,12 +324,27 @@ final class DirectBoseController {
             if (existing != null && existing.isConnected() && !linkDead) return true;
             if (linkDead || existing != null) {
                 // Bose Music (or any other client on channel 2) can silently kill
-                // our link while the socket object still reports connected. Drop the
-                // stale session and reconnect from scratch so a button press recovers
-                // without the user having to power-cycle the headset.
+                // our link. The dead BluetoothSocket MUST be fully closed before a
+                // fresh connect, otherwise the OS keeps the RFCOMM channel reserved
+                // and every later connect() is refused until the process is killed
+                // (which is exactly why control only returned after closing Melody).
                 Logs.trace("bose cached link stale; forcing reconnect");
                 closeSocket();
             }
+            // Up to two connect attempts so a single press recovers even if the
+            // first connect races with the just-released Bose Music session.
+            for (int attempt = 0; attempt < 2; attempt++) {
+                if (attempt > 0) {
+                    Logs.trace("bose reconnect attempt " + (attempt + 1));
+                    sleepQuietly(400L);
+                }
+                if (connectOnce()) return true;
+            }
+            Logs.trace("bose connect failed after retries");
+            return false;
+        }
+
+        private boolean connectOnce() {
             if (!connectorRunning) {
                 connectorRunning = true;
                 Thread connector = new Thread(new Runnable() {
@@ -425,11 +440,18 @@ final class DirectBoseController {
                         Logs.trace("bose reader stopped: " + error);
                     } finally {
                         linkDead = true;
-                        // The OS BluetoothSocket keeps reporting isConnected()==true
-                        // even after the remote side dropped the link, so a stale
-                        // reference would make open() reuse a dead session. Drop it
-                        // here so the next user action re-establishes a fresh link.
                         if (current == socket) socket = null;
+                        // The remote side (or a competing client such as Bose Music)
+                        // dropped the link. BluetoothSocket does NOT free the OS-side
+                        // RFCOMM channel until close() is called, so an unclosed
+                        // reference keeps channel 2 reserved and every later connect()
+                        // is refused until the process is killed. Release it here so a
+                        // button press can re-establish a fresh link without the user
+                        // having to close Melody.
+                        try {
+                            current.close();
+                        } catch (Throwable ignored) {
+                        }
                         synchronized (replyLock) {
                             replyLock.notifyAll();
                         }
