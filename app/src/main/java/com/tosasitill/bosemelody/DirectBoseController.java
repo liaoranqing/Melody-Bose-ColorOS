@@ -451,6 +451,9 @@ final class DirectBoseController {
             // Up to two connect attempts so a single press recovers even if the
             // first connect races with the just-released Bose Music session.
             for (int attempt = 0; attempt < 2; attempt++) {
+                // Feed the wedge watchdog: a legitimate (re)connect must never
+                // look like a stuck worker to the next startWorker() caller.
+                markProgress();
                 if (attempt > 0) {
                     Logs.trace("bose reconnect attempt " + (attempt + 1));
                     sleepQuietly(400L);
@@ -473,8 +476,18 @@ final class DirectBoseController {
             connector.setDaemon(true);
             connector.start();
             long deadline = SystemClock.elapsedRealtime() + CONNECT_TIMEOUT_MS;
+            // Also exit as soon as the connector thread itself gives up. A fresh
+            // RFCOMM connect almost always fails on the first try right after a
+            // previous close ("read failed, socket might closed"); waiting the
+            // full CONNECT_TIMEOUT_MS for a connector that already died turned
+            // every open() into ~4s (x2 attempts = ~9s), which both made panel
+            // taps visibly slower AND pushed the worker past WORKER_STUCK_MS so
+            // the wedge watchdog fired spuriously and raced generations
+            // (the "freeze after battery sync" symptom). connectorRunning is
+            // cleared by the connector in both its success and failure paths.
             while ((socket == null || !socket.isConnected())
-                    && activeConnectGen == myGen && SystemClock.elapsedRealtime() < deadline) {
+                    && activeConnectGen == myGen && connectorRunning
+                    && SystemClock.elapsedRealtime() < deadline) {
                 try {
                     Thread.sleep(80L);
                 } catch (InterruptedException error) {
@@ -483,12 +496,25 @@ final class DirectBoseController {
                 }
             }
             BluetoothSocket current = socket;
+            // The loop can now exit while the connector is between connect()
+            // returning and publishing the socket; poll briefly so a just-succeeded
+            // connect is not mistaken for a failure and closed again.
+            for (int i = 0; current == null && i < 5; i++) {
+                sleepQuietly(80L);
+                current = socket;
+            }
             if (current != null && current.isConnected()) {
                 startReader(current);
                 Logs.trace("bose BMAP link ready " + key + " channel=" + BoseDeviceConfig.RFCOMM_CHANNEL);
                 return true;
             }
-            Logs.trace("bose connect watchdog fired");
+            // Distinguish the two failure paths so the log tells us whether the
+            // connector gave up on its own (fast) or truly hung (watchdog).
+            if (!connectorRunning) {
+                Logs.trace("bose connect failed fast (connector gave up)");
+            } else {
+                Logs.trace("bose connect watchdog fired");
+            }
             // A blocking connect() inside the connector thread can hang far longer
             // than CONNECT_TIMEOUT_MS (e.g. when Bose Music holds the channel at
             // boot). Abandon only our own generation so a stale connector that
