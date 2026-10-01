@@ -492,7 +492,12 @@ final class DirectBoseController {
                 return;
             }
             if (mode < BoseDeviceConfig.MODE_QUIET || mode > BoseDeviceConfig.MODE_CINEMA) return;
-            switchAudioMode(mode);
+            if (!switchAudioMode(mode)) return;
+            // Leaving the off state wrote ANC=0 into the live settings; it has to
+            // be switched back on or Quiet would stay silent rather than cancel.
+            if (mode == BoseDeviceConfig.MODE_QUIET && !MelodyProviderHook.ancConfirmed()) {
+                setNoiseCancellation(true);
+            }
         }
 
         private boolean switchAudioMode(int mode) {
