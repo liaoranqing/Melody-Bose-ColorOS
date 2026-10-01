@@ -10,8 +10,8 @@ android {
         applicationId 'com.tosasitill.bosemelody'
         minSdk 29
         targetSdk 35
-        versionCode 17
-        versionName '1.4.0-fix14'
+        versionCode 18
+        versionName '1.4.0-fix15'
     }
 
     compileOptions {

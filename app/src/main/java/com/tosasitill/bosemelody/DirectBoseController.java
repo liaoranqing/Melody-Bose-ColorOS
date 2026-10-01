@@ -673,6 +673,7 @@ final class DirectBoseController {
                 // ANC is cleared, so the tile is painted exactly once below.
                 if (!switchAudioModeQuiet(BoseDeviceConfig.MODE_QUIET)) return;
                 setNoiseCancellation(false);
+                queryBattery();
                 return;
             }
             if (mode < BoseDeviceConfig.MODE_QUIET || mode > BoseDeviceConfig.MODE_CINEMA) return;
@@ -681,6 +682,20 @@ final class DirectBoseController {
             // be switched back on or Quiet would stay silent rather than cancel.
             if (mode == BoseDeviceConfig.MODE_QUIET && !MelodyProviderHook.ancConfirmed()) {
                 setNoiseCancellation(true);
+            }
+            // Ride along on every confirmed mode change so the battery cache is
+            // kept fresh without opening extra sessions on panel refreshes.
+            queryBattery();
+        }
+
+        private void queryBattery() {
+            BoseBmap.Frame battery = command(BoseBmap.BLOCK_BATTERY,
+                    BoseBmap.FUNC_BATTERY, BoseBmap.OP_GET, null);
+            if (battery != null && battery.operator != BoseBmap.OP_ERROR) {
+                Logs.trace("bose battery RX payload=" + BoseBmap.hex(battery.payload));
+                parseBattery(battery.payload);
+            } else {
+                Logs.trace("bose battery GET failed: " + describe(battery));
             }
         }
 

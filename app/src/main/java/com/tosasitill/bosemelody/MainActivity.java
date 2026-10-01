@@ -23,6 +23,10 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Mirror the trace into this app's external files dir so battery-sync
+        // failures inside the module process can be pulled with adb
+        // (/sdcard/Android/data/com.tosasitill.bosemelody/files/bose-melody.log).
+        Logs.traceToFile(getExternalFilesDir(null));
         if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
                 != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT},
