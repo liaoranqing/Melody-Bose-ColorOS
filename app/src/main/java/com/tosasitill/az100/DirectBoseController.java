@@ -12,6 +12,7 @@ import java.io.OutputStream;
 import java.util.Locale;
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Short-lived Bose BMAP RFCOMM controller owned by the Melody process. */
 final class DirectBoseController {
@@ -120,6 +121,8 @@ final class DirectBoseController {
         private volatile long probeAt;
         private volatile int probeResult;
         private final Object ioLock = new Object();
+        private final AtomicInteger connectGen = new AtomicInteger();
+        private volatile int activeConnectGen = -1;
 
         Session(Context context, String address) {
             this.context = context;
@@ -345,23 +348,19 @@ final class DirectBoseController {
         }
 
         private boolean connectOnce() {
-            if (!connectorRunning) {
-                connectorRunning = true;
-                Thread connector = new Thread(new Runnable() {
-                    @Override public void run() {
-                        try {
-                            connectSocket();
-                        } finally {
-                            connectorRunning = false;
-                        }
-                    }
-                }, "bose-bmap-connect");
-                connector.setDaemon(true);
-                connector.start();
-            }
+            int myGen = connectGen.incrementAndGet();
+            activeConnectGen = myGen;
+            connectorRunning = true;
+            Thread connector = new Thread(new Runnable() {
+                @Override public void run() {
+                    connectSocket(myGen);
+                }
+            }, "bose-bmap-connect");
+            connector.setDaemon(true);
+            connector.start();
             long deadline = SystemClock.elapsedRealtime() + CONNECT_TIMEOUT_MS;
             while ((socket == null || !socket.isConnected())
-                    && connectorRunning && SystemClock.elapsedRealtime() < deadline) {
+                    && activeConnectGen == myGen && SystemClock.elapsedRealtime() < deadline) {
                 try {
                     Thread.sleep(80L);
                 } catch (InterruptedException error) {
@@ -370,17 +369,27 @@ final class DirectBoseController {
                 }
             }
             BluetoothSocket current = socket;
-            if (current == null || !current.isConnected()) {
-                Logs.trace("bose connect watchdog fired");
-                closeSocket();
-                return false;
+            if (current != null && current.isConnected()) {
+                startReader(current);
+                Logs.trace("bose BMAP link ready " + key + " channel=" + BoseDeviceConfig.RFCOMM_CHANNEL);
+                return true;
             }
-            startReader(current);
-            Logs.trace("bose BMAP link ready " + key + " channel=" + BoseDeviceConfig.RFCOMM_CHANNEL);
-            return true;
+            Logs.trace("bose connect watchdog fired");
+            // A blocking connect() inside the connector thread can hang far longer
+            // than CONNECT_TIMEOUT_MS (e.g. when Bose Music holds the channel at
+            // boot). Abandon only our own generation so a stale connector that
+            // finally returns cannot clear the flag for a newer attempt; clearing
+            // it lets the next press start a brand-new connector instead of waiting
+            // on a dead one (the "must close Melody to recover" symptom).
+            if (activeConnectGen == myGen) {
+                activeConnectGen = -1;
+                connectorRunning = false;
+            }
+            closeSocket();
+            return false;
         }
 
-        private void connectSocket() {
+        private void connectSocket(int myGen) {
             Logs.trace("bose connect start channel=" + BoseDeviceConfig.RFCOMM_CHANNEL);
             BluetoothSocket opened = null;
             try {
@@ -396,6 +405,7 @@ final class DirectBoseController {
                 opened.connect();
                 Thread.sleep(POST_WRITE_DELAY_MS + 100L);
                 drainStartup(opened);
+                if (myGen == activeConnectGen) connectorRunning = false;
             } catch (Throwable error) {
                 Logs.trace("bose BMAP channel " + BoseDeviceConfig.RFCOMM_CHANNEL
                         + " link failed: " + error);
@@ -406,6 +416,7 @@ final class DirectBoseController {
                     }
                 }
                 if (socket == opened) socket = null;
+                if (myGen == activeConnectGen) connectorRunning = false;
             }
         }
 
