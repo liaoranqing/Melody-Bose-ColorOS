@@ -1,0 +1,84 @@
+1790826567291 bose explicit state refresh requested
+1790826567298 bose connect start channel=2
+1790826567300 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@82c7f760: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826571309 bose connect watchdog fired
+1790826571310 bose reconnect attempt 2
+1790826571711 bose connect start channel=2
+1790826571715 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@82c7f760: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826575723 bose connect watchdog fired
+1790826575724 bose connect failed after retries
+1790826576025 bose connect start channel=2
+1790826576028 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@95f4ddb: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826580034 bose connect watchdog fired
+1790826580035 bose reconnect attempt 2
+1790826580436 bose connect start channel=2
+1790826580440 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@95f4ddb: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826584447 bose connect watchdog fired
+1790826584447 bose connect failed after retries
+1790826585248 bose connect start channel=2
+1790826585251 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@95f4ddb: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826589264 bose connect watchdog fired
+1790826589264 bose reconnect attempt 2
+1790826589666 bose connect start channel=2
+1790826589668 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@95f4ddb: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826593675 bose connect watchdog fired
+1790826593676 bose connect failed after retries
+1790826595177 bose connect start channel=2
+1790826595179 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@814526bc: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826599189 bose connect watchdog fired
+1790826599189 bose reconnect attempt 2
+1790826599591 bose connect start channel=2
+1790826599595 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@814526bc: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826603606 bose connect watchdog fired
+1790826603606 bose connect failed after retries
+1790826605107 bose connect start channel=2
+1790826605109 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@814526bc: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826609119 bose connect watchdog fired
+1790826609120 bose reconnect attempt 2
+1790826609522 bose connect start channel=2
+1790826609526 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@814526bc: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826613537 bose connect watchdog fired
+1790826613538 bose connect failed after retries
+1790826613538 bose giving up after 5 failed opens
+1790826619535 bose explicit state refresh requested
+1790826619536 bose connect start channel=2
+1790826619538 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@148ca41e: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826623551 bose connect watchdog fired
+1790826623551 bose reconnect attempt 2
+1790826623952 bose connect start channel=2
+1790826623953 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@7efc0e0b: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826627966 bose connect watchdog fired
+1790826627967 bose connect failed after retries
+1790826628269 bose connect start channel=2
+1790826628273 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@7efc0e0b: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826632292 bose connect watchdog fired
+1790826632292 bose reconnect attempt 2
+1790826632694 bose connect start channel=2
+1790826632698 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@7efc0e0b: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826636711 bose connect watchdog fired
+1790826636711 bose connect failed after retries
+1790826637513 bose connect start channel=2
+1790826637517 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@7efc0e0b: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826641532 bose connect watchdog fired
+1790826641533 bose reconnect attempt 2
+1790826641935 bose connect start channel=2
+1790826641939 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@838ae396: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826645949 bose connect watchdog fired
+1790826645950 bose connect failed after retries
+1790826647452 bose connect start channel=2
+1790826647456 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@838ae396: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826651475 bose connect watchdog fired
+1790826651475 bose reconnect attempt 2
+1790826651876 bose connect start channel=2
+1790826651878 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@838ae396: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826655891 bose connect watchdog fired
+1790826655891 bose connect failed after retries
+1790826657394 bose connect start channel=2
+1790826657399 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@838ae396: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826661405 bose connect watchdog fired
+1790826661406 bose reconnect attempt 2
+1790826661807 bose connect start channel=2
+1790826661809 bose BMAP channel 2 link failed: java.lang.SecurityException: Need android.permission.BLUETOOTH_SCAN permission for android.content.AttributionSource@b1eacc7d: BluetoothAdapterServiceBinder.cancelDiscovery()
+1790826665816 bose connect watchdog fired
+1790826665816 bose connect failed after retries
+1790826665817 bose giving up after 5 failed opens

@@ -27,10 +27,21 @@ public class MainActivity extends Activity {
         // failures inside the module process can be pulled with adb
         // (/sdcard/Android/data/com.tosasitill.bosemelody/files/bose-melody.log).
         Logs.traceToFile(getExternalFilesDir(null));
+        // Both are runtime permissions on API 31+. cancelDiscovery() inside the
+        // BMAP connect path needs BLUETOOTH_SCAN, so request it together with
+        // BLUETOOTH_CONNECT or the settings page cannot read battery/state.
+        java.util.List<String> needed = new java.util.ArrayList<>();
         if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
                 != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT},
-                    PERMISSION_REQUEST);
+            needed.add(Manifest.permission.BLUETOOTH_CONNECT);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+                && checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN)
+                != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.BLUETOOTH_SCAN);
+        }
+        if (!needed.isEmpty()) {
+            requestPermissions(needed.toArray(new String[0]), PERMISSION_REQUEST);
         }
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);

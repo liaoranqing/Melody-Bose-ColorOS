@@ -28,6 +28,13 @@ final class DirectBoseController {
      * (the "must force-stop Melody to regain control" symptom).
      */
     private static final long ACL_NEGATIVE_TTL_MS = 5_000L;
+    /**
+     * Battery piggyback throttling. Riding a GET on every confirmed mode
+     * switch made panel taps noticeably slower; a mode change rarely moves
+     * the battery needle, so only refresh the cache at most this often.
+     * Explicit refreshState()/queryState() reads are NOT throttled.
+     */
+    private static final long BATTERY_THROTTLE_MS = 30_000L;
     private static final long[] RETRY_BACKOFF_MS = new long[]{300L, 800L, 1500L};
     private static final int MAX_FAILED_OPENS = 4;
     private static final long MIN_REQUEST_GAP_MS = 700L;
@@ -131,6 +138,8 @@ final class DirectBoseController {
         private boolean workerStarted;
         private volatile long lastRequestAt;
         private int failedOpens;
+        /** Wall clock of the last successful piggyback battery GET. */
+        private volatile long batteryLastQueryAt;
         private volatile boolean synced;
         private boolean syncInFlight;
         private volatile BluetoothSocket socket;
@@ -500,7 +509,14 @@ final class DirectBoseController {
             try {
                 BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
                 if (adapter == null || !adapter.isEnabled()) throw new IOException("bluetooth disabled");
-                adapter.cancelDiscovery();
+                try {
+                    // Optimization only (discovery competes with RFCOMM). It
+                    // needs BLUETOOTH_SCAN in this module's own process on
+                    // API 31+; if denied we must still be able to connect.
+                    adapter.cancelDiscovery();
+                } catch (SecurityException ignored) {
+                    Logs.trace("bose cancelDiscovery denied (non-fatal)");
+                }
                 BluetoothDevice device = adapter.getRemoteDevice(address);
                 opened = (BluetoothSocket) device.getClass()
                         .getMethod("createInsecureRfcommSocket", int.class)
@@ -689,9 +705,16 @@ final class DirectBoseController {
         }
 
         private void queryBattery() {
+            // Throttle piggyback reads: mode switches used to pay for a full
+            // extra GET round-trip every time, which made panel taps visibly
+            // slower. Explicit syncs (queryState) still read unthrottled.
+            long now = SystemClock.elapsedRealtime();
+            if (batteryLastQueryAt != 0L
+                    && now - batteryLastQueryAt < BATTERY_THROTTLE_MS) return;
             BoseBmap.Frame battery = command(BoseBmap.BLOCK_BATTERY,
                     BoseBmap.FUNC_BATTERY, BoseBmap.OP_GET, null);
             if (battery != null && battery.operator != BoseBmap.OP_ERROR) {
+                batteryLastQueryAt = now;
                 Logs.trace("bose battery RX payload=" + BoseBmap.hex(battery.payload));
                 parseBattery(battery.payload);
             } else {
@@ -823,6 +846,7 @@ final class DirectBoseController {
             BoseBmap.Frame battery = command(BoseBmap.BLOCK_BATTERY,
                     BoseBmap.FUNC_BATTERY, BoseBmap.OP_GET, null);
             if (battery != null && battery.operator != BoseBmap.OP_ERROR) {
+                batteryLastQueryAt = SystemClock.elapsedRealtime();
                 Logs.trace("bose battery RX payload=" + BoseBmap.hex(battery.payload));
                 parseBattery(battery.payload);
             } else {
