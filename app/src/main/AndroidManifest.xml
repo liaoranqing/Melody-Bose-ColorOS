@@ -13,7 +13,10 @@
         tools:targetApi="s" />
     <application
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
+        android:theme="@style/Theme.BoseMelody"
         android:supportsRtl="true">
         <meta-data android:name="xposedmodule" android:value="true" />
         <meta-data android:name="xposeddescription" android:value="@string/module_description" />

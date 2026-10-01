@@ -10,8 +10,14 @@ android {
         applicationId 'com.tosasitill.bosemelody'
         minSdk 29
         targetSdk 35
-        versionCode 20
-        versionName '1.4.0-fix17'
+        versionCode 21
+        versionName '1.4.0'
+    }
+
+    buildFeatures {
+        // MainActivity shows BuildConfig.VERSION_NAME on the about card;
+        // AGP 9 no longer generates BuildConfig unless this is opted in.
+        buildConfig true
     }
 
     compileOptions {
@@ -23,6 +29,9 @@ android {
         release {
             minifyEnabled false
             shrinkResources false
+            // LSPosed modules are sideloaded; sign with the local debug key so
+            // the release APK installs directly without manual signing.
+            signingConfig signingConfigs.debug
         }
     }
 }
