@@ -866,7 +866,9 @@ final class DirectBoseController {
 
         private void apply(Operation operation) {
             if ("audio_option".equals(operation.name)) {
-                applyAudioOption(operation.values[0], operation.values[1]);
+                java.util.Map<Integer, Integer> options = new java.util.LinkedHashMap<>();
+                options.put(operation.values[0], operation.values[1]);
+                applyAudioOptions(options);
                 return;
             }
             if (!"cnc".equals(operation.name)) return;
@@ -922,7 +924,7 @@ final class DirectBoseController {
                 return;
             }
             byte[] payload = Arrays.copyOf(current.payload, 5);
-            applyAudioOptions(payload, options);
+            DirectBoseController.applyAudioOptions(payload, options);
             BoseBmap.Frame answer = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
                     BoseBmap.OP_SETGET, payload);
             if (answer == null || answer.operator == BoseBmap.OP_ERROR) {
