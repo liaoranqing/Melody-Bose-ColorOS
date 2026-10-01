@@ -44,9 +44,9 @@ jobs:
         run: |
           mkdir -p /tmp/bose-test-classes
           javac -d /tmp/bose-test-classes \
-            app/src/main/java/com/tosasitill/az100/BoseBmap.java \
-            app/src/main/java/com/tosasitill/az100/BoseBmapTest.java
-          java -cp /tmp/bose-test-classes com.tosasitill.az100.BoseBmapTest
+            app/src/main/java/com/tosasitill/bosemelody/BoseBmap.java \
+            app/src/main/java/com/tosasitill/bosemelody/BoseBmapTest.java
+          java -cp /tmp/bose-test-classes com.tosasitill.bosemelody.BoseBmapTest
 
       - name: Build debug APK
         run: gradle --no-daemon --stacktrace :app:assembleDebug

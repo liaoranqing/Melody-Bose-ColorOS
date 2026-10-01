@@ -1,0 +1,120 @@
+10-01 09:51:40.120  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-01 09:51:40.125 29015 29170 I oplus_bt_power_saving_ctrl: [oplus_bt_power_saving_ctrl.cc:876] oplus_power_traffic_monitor_check_timeout_for_map: Traffic monitor auto-stop cleanup: type=RFCOMM, addr=xx:xx:xx:xx:41:d7, channel=1
+10-01 09:51:40.125 29015 29170 I oplus_bt_power_saving_ctrl: [oplus_bt_power_saving_ctrl.cc:634] oplus_power_traffic_monitor_stop: Stop traffic monitor: type=RFCOMM, addr=xx:xx:xx:xx:41:d7, channel=1
+10-01 09:51:40.125 29015 29170 I oplus_bt_power_saving_ctrl: [oplus_bt_power_saving_ctrl.cc:242] oplus_power_traffic_monitor_try_stop_check_alarm: Traffic monitor try stop: rfcomm and l2cap both empty; cancel alarm
+10-01 09:51:40.126 29015 29170 I oplus_bt_power_saving_ctrl: [oplus_bt_power_saving_ctrl.cc:169] traffic_monitor_check_alarm_cb_internal: Stopping traffic monitor alarm: rfcomm and l2cap both empty
+10-01 09:51:40.333  1963 29147 I vendor.qti.bluetooth@1.0-ibs_handler: DeviceSleep: TX Awake, Sending SLEEP_IND
+10-01 09:51:40.333  1963 29147 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF
+10-01 09:51:40.452  2737 10264 D DeviceHalAidl: [bluetooth] setParameters: parameters: "screen_state=off"
+10-01 09:51:40.453  2255  4327 D AHAL_Module: updateScreenState: bluetooth: 0
+10-01 09:51:40.453  2255  4327 D AHAL_Module: updateScreenState: bluetooth: 0
+10-01 09:51:40.485  1963 29119 D vendor.qti.bluetooth@1.0-wake_lock: Release wakelock is released 
+10-01 09:51:40.660  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-01 09:51:40.660  1963 29142 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK ON
+10-01 09:51:40.660  1963 29142 D vendor.qti.bluetooth@1.0-wake_lock: Acquire wakelock is acquired 
+10-01 09:51:40.660  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-01 09:51:40.662  1963 29142 E vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: WAKE ACK from SOC, Unexpected TX state
+10-01 09:51:40.662  1963 29142 E vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Rx WAKE ACK from SOC,Tx state is ASLEEP and Rx state is AWAKE
+10-01 09:51:40.701  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-01 09:51:40.701  1963 29142 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF
+10-01 09:51:40.851  1963 29119 D vendor.qti.bluetooth@1.0-wake_lock: Release wakelock is released 
+10-01 09:51:42.210  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-01 09:51:42.210  1963 29142 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK ON
+10-01 09:51:42.210  1963 29142 D vendor.qti.bluetooth@1.0-wake_lock: Acquire wakelock is acquired 
+10-01 09:51:42.210  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-01 09:51:42.212 29015 29170 D AvrcpTargetJni: [com_android_bluetooth_avrcp_target.cpp:585] getCurrentPlayStatus: 
+10-01 09:51:42.212 29015 29077 D bt_device_interop: [interop_oplus.cc:741] vendor/oplus/packages/modules/Bluetooth/system_unify/common/interop/interop_oplus.cc:741 - interop_oplus_match_name_impl: interop_oplus_match_name_impl:[OplusAvrcpUseMusicOnly] check ****色深寂冑 return 0
+10-01 09:51:42.213 29015 29077 D bt_device_interop: [interop_oplus.cc:741] vendor/oplus/packages/modules/Bluetooth/system_unify/common/interop/interop_oplus.cc:741 - interop_oplus_match_name_impl: interop_oplus_match_name_impl:[OplusAvrcpUseA2dpOnly] check ****色深寂冑 return 0
+10-01 09:51:42.214  1963  2055 I vendor.qti.bluetooth@1.0-ibs_handler: DeviceWakeUp: Writing IBS_WAKE_IND
+10-01 09:51:42.215  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_ACK: 0xFC
+10-01 09:51:42.215  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Signal wack_cond_
+10-01 09:51:42.215  1963  2055 D vendor.qti.bluetooth@1.0-ibs_handler: DeviceWakeUp: Unblocked from waiting for FC, pthread_cond_timedwait ret = 0
+10-01 09:51:42.251  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-01 09:51:42.399  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-01 09:51:42.399  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-01 09:51:42.439  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-01 09:51:42.466  1963 29147 I vendor.qti.bluetooth@1.0-ibs_handler: DeviceSleep: TX Awake, Sending SLEEP_IND
+10-01 09:51:42.466  1963 29147 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF
+10-01 09:51:42.616  1963 29119 D vendor.qti.bluetooth@1.0-wake_lock: Release wakelock is released 
+10-01 09:51:42.937  2737  2737 D DeviceHalAidl: [bluetooth] setParameters: parameters: "screen_state=off"
+10-01 09:51:42.938  2255  4327 D AHAL_Module: updateScreenState: bluetooth: 0
+10-01 09:51:42.938  2255  4327 D AHAL_Module: updateScreenState: bluetooth: 0
+10-01 09:51:43.450  2737  2737 D DeviceHalAidl: [bluetooth] setParameters: parameters: "screen_state=off"
+10-01 09:51:43.450  2255  4327 D AHAL_Module: updateScreenState: bluetooth: 0
+10-01 09:51:43.450  2255  4327 D AHAL_Module: updateScreenState: bluetooth: 0
+10-01 09:51:44.148  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-01 09:51:44.148  1963 29142 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK ON
+10-01 09:51:44.148  1963 29142 D vendor.qti.bluetooth@1.0-wake_lock: Acquire wakelock is acquired 
+10-01 09:51:44.148  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-01 09:51:44.150 29015 29170 D AvrcpTargetJni: [com_android_bluetooth_avrcp_target.cpp:585] getCurrentPlayStatus: 
+10-01 09:51:44.151 29015 29077 D bt_device_interop: [interop_oplus.cc:741] vendor/oplus/packages/modules/Bluetooth/system_unify/common/interop/interop_oplus.cc:741 - interop_oplus_match_name_impl: interop_oplus_match_name_impl:[OplusAvrcpUseMusicOnly] check ****色深寂冑 return 0
+10-01 09:51:44.151 29015 29077 D bt_device_interop: [interop_oplus.cc:741] vendor/oplus/packages/modules/Bluetooth/system_unify/common/interop/interop_oplus.cc:741 - interop_oplus_match_name_impl: interop_oplus_match_name_impl:[OplusAvrcpUseA2dpOnly] check ****色深寂冑 return 0
+10-01 09:51:44.152  1963  2055 I vendor.qti.bluetooth@1.0-ibs_handler: DeviceWakeUp: Writing IBS_WAKE_IND
+10-01 09:51:44.152  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_ACK: 0xFC
+10-01 09:51:44.152  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Signal wack_cond_
+10-01 09:51:44.152  1963  2055 D vendor.qti.bluetooth@1.0-ibs_handler: DeviceWakeUp: Unblocked from waiting for FC, pthread_cond_timedwait ret = 0
+10-01 09:51:44.189  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-01 09:51:44.403  1963 29147 I vendor.qti.bluetooth@1.0-ibs_handler: DeviceSleep: TX Awake, Sending SLEEP_IND
+10-01 09:51:44.403  1963 29147 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF
+10-01 09:51:44.554  1963 29119 D vendor.qti.bluetooth@1.0-wake_lock: Release wakelock is released 
+10-01 09:51:44.729  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-01 09:51:44.729  1963 29142 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK ON
+10-01 09:51:44.729  1963 29142 D vendor.qti.bluetooth@1.0-wake_lock: Acquire wakelock is acquired 
+10-01 09:51:44.729  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-01 09:51:44.770  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-01 09:51:44.770  1963 29142 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF
+10-01 09:51:44.920  1963 29119 D vendor.qti.bluetooth@1.0-wake_lock: Release wakelock is released 
+10-01 09:51:45.950  2737  2737 D DeviceHalAidl: [bluetooth] setParameters: parameters: "screen_state=off"
+10-01 09:51:45.950  2255  4327 D AHAL_Module: updateScreenState: bluetooth: 0
+10-01 09:51:45.950  2255  4327 D AHAL_Module: updateScreenState: bluetooth: 0
+10-01 09:51:46.088  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-01 09:51:46.088  1963 29142 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK ON
+10-01 09:51:46.088  1963 29142 D vendor.qti.bluetooth@1.0-wake_lock: Acquire wakelock is acquired 
+10-01 09:51:46.088  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-01 09:51:46.090 29015 29170 D AvrcpTargetJni: [com_android_bluetooth_avrcp_target.cpp:585] getCurrentPlayStatus: 
+10-01 09:51:46.090 29015 29077 D bt_device_interop: [interop_oplus.cc:741] vendor/oplus/packages/modules/Bluetooth/system_unify/common/interop/interop_oplus.cc:741 - interop_oplus_match_name_impl: interop_oplus_match_name_impl:[OplusAvrcpUseMusicOnly] check ****色深寂冑 return 0
+10-01 09:51:46.091 29015 29077 D bt_device_interop: [interop_oplus.cc:741] vendor/oplus/packages/modules/Bluetooth/system_unify/common/interop/interop_oplus.cc:741 - interop_oplus_match_name_impl: interop_oplus_match_name_impl:[OplusAvrcpUseA2dpOnly] check ****色深寂冑 return 0
+10-01 09:51:46.091  1963  2055 I vendor.qti.bluetooth@1.0-ibs_handler: DeviceWakeUp: Writing IBS_WAKE_IND
+10-01 09:51:46.092  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_ACK: 0xFC
+10-01 09:51:46.092  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Signal wack_cond_
+10-01 09:51:46.092  1963  2055 D vendor.qti.bluetooth@1.0-ibs_handler: DeviceWakeUp: Unblocked from waiting for FC, pthread_cond_timedwait ret = 0
+10-01 09:51:46.128  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-01 09:51:46.342  1963 29147 I vendor.qti.bluetooth@1.0-ibs_handler: DeviceSleep: TX Awake, Sending SLEEP_IND
+10-01 09:51:46.342  1963 29147 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF
+10-01 09:51:46.457  2737  2737 D DeviceHalAidl: [bluetooth] setParameters: parameters: "screen_state=off"
+10-01 09:51:46.457  2255  2256 D AHAL_Module: updateScreenState: bluetooth: 0
+10-01 09:51:46.457  2255  2256 D AHAL_Module: updateScreenState: bluetooth: 0
+10-01 09:51:46.467  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-01 09:51:46.467  1963 29142 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK ON
+10-01 09:51:46.467  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-01 09:51:46.508  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-01 09:51:46.508  1963 29142 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF
+10-01 09:51:46.658  1963 29119 D vendor.qti.bluetooth@1.0-wake_lock: Release wakelock is released 
+10-01 09:51:48.216  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-01 09:51:48.217  1963 29142 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK ON
+10-01 09:51:48.217  1963 29142 D vendor.qti.bluetooth@1.0-wake_lock: Acquire wakelock is acquired 
+10-01 09:51:48.217  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-01 09:51:48.219 29015 29170 D AvrcpTargetJni: [com_android_bluetooth_avrcp_target.cpp:585] getCurrentPlayStatus: 
+10-01 09:51:48.220 29015 29077 D bt_device_interop: [interop_oplus.cc:741] vendor/oplus/packages/modules/Bluetooth/system_unify/common/interop/interop_oplus.cc:741 - interop_oplus_match_name_impl: interop_oplus_match_name_impl:[OplusAvrcpUseMusicOnly] check ****色深寂冑 return 0
+10-01 09:51:48.220 29015 29077 D bt_device_interop: [interop_oplus.cc:741] vendor/oplus/packages/modules/Bluetooth/system_unify/common/interop/interop_oplus.cc:741 - interop_oplus_match_name_impl: interop_oplus_match_name_impl:[OplusAvrcpUseA2dpOnly] check ****色深寂冑 return 0
+10-01 09:51:48.221  1963  2055 I vendor.qti.bluetooth@1.0-ibs_handler: DeviceWakeUp: Writing IBS_WAKE_IND
+10-01 09:51:48.222  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_ACK: 0xFC
+10-01 09:51:48.222  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Signal wack_cond_
+10-01 09:51:48.222  1963  2055 D vendor.qti.bluetooth@1.0-ibs_handler: DeviceWakeUp: Unblocked from waiting for FC, pthread_cond_timedwait ret = 0
+10-01 09:51:48.257  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-01 09:51:48.472  1963 29147 I vendor.qti.bluetooth@1.0-ibs_handler: DeviceSleep: TX Awake, Sending SLEEP_IND
+10-01 09:51:48.472  1963 29147 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF
+10-01 09:51:48.623  1963 29119 D vendor.qti.bluetooth@1.0-wake_lock: Release wakelock is released 
+10-01 09:51:48.798  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-01 09:51:48.798  1963 29142 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK ON
+10-01 09:51:48.798  1963 29142 D vendor.qti.bluetooth@1.0-wake_lock: Acquire wakelock is acquired 
+10-01 09:51:48.798  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-01 09:51:48.799  1963 29142 E vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: WAKE ACK from SOC, Unexpected TX state
+10-01 09:51:48.799  1963 29142 E vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Rx WAKE ACK from SOC,Tx state is ASLEEP and Rx state is AWAKE
+10-01 09:51:48.838  1963 29142 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-01 09:51:48.838  1963 29142 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF
+10-01 09:51:48.957  2737  2737 D DeviceHalAidl: [bluetooth] setParameters: parameters: "screen_state=off"
+10-01 09:51:48.957  2255  2256 D AHAL_Module: updateScreenState: bluetooth: 0
+10-01 09:51:48.957  2255  2256 D AHAL_Module: updateScreenState: bluetooth: 0
+10-01 09:51:48.989  1963 29119 D vendor.qti.bluetooth@1.0-wake_lock: Release wakelock is released 
+10-01 09:51:49.234 29015 29084 E Bluetooth: [files.cc:229] FileCreatedTime: unable to read '/data/misc/bluetooth/cached_hci/btsnooz_hci.log' file metadata, error: No such file or directory

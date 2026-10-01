@@ -1,4 +1,4 @@
-package com.tosasitill.az100;
+package com.tosasitill.bosemelody;
 
 import android.Manifest;
 import android.app.Activity;

@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'Az100LSPosed'
+rootProject.name = 'BoseMelodyLSPosed'
 include ':app'

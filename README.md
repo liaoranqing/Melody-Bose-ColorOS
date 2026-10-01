@@ -63,12 +63,11 @@ adb logcat -s MelodyEarphone:V
 
 ## 重要限制
 
-1. 实机 BMAP 连接是否成功必须由日志确认；当前电脑没有可用的 Gradle 构建链，尚未
-   生成可安装 APK。
+1. 实机 BMAP 连接是否成功必须由日志确认；APK 由 GitHub Actions
+   （`.github/workflows/build.yml`）自动构建，本地无 Gradle 环境。
 2. Bose BMAP 已公开的 QC Ultra 2 Earbuds 配置没有可靠的实时“左耳/右耳佩戴状态”
    数据接口。模块不会伪造实时佩戴状态；自动暂停开关可控制，但不等于实时传感器读数。
 3. 部分 Bose 设置的 SET 操作要求云端 ECDH 认证，本模块只使用已分析的 GET、
    SETGET 和 AudioModes START；固件拒绝的写入会记录错误，不影响其他控制。
 4. MAC 地址来自用户截图并写入源码。如果更换耳机或系统对蓝牙地址做随机化，需要
    修改 `BoseDeviceConfig.java` 后重新构建。
-5. 该分支是 Bose 专用版本；AZ100 原 Airoha/RACE 入口和设备路由不会用于运行时控制。

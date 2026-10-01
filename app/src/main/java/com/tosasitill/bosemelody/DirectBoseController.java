@@ -1,4 +1,4 @@
-package com.tosasitill.az100;
+package com.tosasitill.bosemelody;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -24,6 +24,8 @@ final class DirectBoseController {
     private static final long MIN_REQUEST_GAP_MS = 700L;
     private static final long SETTLE_DELAY_MS = 150L;
     private static final long POST_WRITE_DELAY_MS = 200L;
+    /** A healthy worker never blocks longer than ~9s; past this it is wedged. */
+    private static final long WORKER_STUCK_MS = 12_000L;
     private static final ConcurrentHashMap<String, Session> SESSIONS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, int[]> BATTERY = new ConcurrentHashMap<>();
     private static volatile int aclPresent;
@@ -98,7 +100,7 @@ final class DirectBoseController {
         }
     }
 
-    private static final class Session implements Runnable, BoseBmap.Sink {
+    private static final class Session implements BoseBmap.Sink {
         private final String address;
         private final String key;
         private volatile Context context;
@@ -123,6 +125,10 @@ final class DirectBoseController {
         private final Object ioLock = new Object();
         private final AtomicInteger connectGen = new AtomicInteger();
         private volatile int activeConnectGen = -1;
+        private final AtomicInteger workerGen = new AtomicInteger();
+        private volatile int activeWorkerGen = -1;
+        /** Last time the worker made forward progress; the wedge watchdog reads it. */
+        private volatile long workerProgressAt;
 
         Session(Context context, String address) {
             this.context = context;
@@ -241,16 +247,69 @@ final class DirectBoseController {
         }
 
         private void startWorker() {
-            if (workerStarted) return;
+            // caller holds `lock`
+            long now = SystemClock.elapsedRealtime();
+            if (workerStarted) {
+                // A worker is nominally running. If it has made no progress for a
+                // long time it is wedged inside a blocking socket write on a dead
+                // RFCOMM link (write() has no timeout), which would leave
+                // workerStarted true forever so every later click is silently
+                // dropped until Melody is force-stopped. Abandon it: close the
+                // socket to unblock the write, bump the generation so the stale
+                // worker exits its loop, and start a fresh one.
+                if (now - workerProgressAt > WORKER_STUCK_MS) {
+                    Logs.trace("bose worker wedged; forcing recovery");
+                    closeSocket();
+                    workerStarted = false;
+                    // fall through to start a new generation
+                } else {
+                    return;
+                }
+            }
             workerStarted = true;
-            Thread thread = new Thread(this, "bose-bmap-worker");
+            int gen = workerGen.incrementAndGet();
+            activeWorkerGen = gen;
+            workerProgressAt = now;
+            Thread thread = new Thread(new Worker(gen), "bose-bmap-worker");
             thread.setDaemon(true);
-            thread.start();
+            try {
+                thread.start();
+            } catch (Throwable error) {
+                // Thread creation failed (e.g. OOM). Do not leave workerStarted
+                // stuck true, or no future click can ever start a worker.
+                Logs.trace("bose worker start failed: " + error);
+                workerStarted = false;
+            }
         }
 
-        @Override public void run() {
+        /** True while this worker is still the active generation. */
+        private boolean isCurrentWorker(int gen) {
+            return activeWorkerGen == gen;
+        }
+
+        private void markProgress() {
+            workerProgressAt = SystemClock.elapsedRealtime();
+        }
+
+        /** Runs the worker loop on its own thread, tagged with a generation. */
+        private final class Worker implements Runnable {
+            private final int gen;
+
+            Worker(int gen) {
+                this.gen = gen;
+            }
+
+            @Override public void run() {
+                workerLoop(gen);
+            }
+        }
+
+        private void workerLoop(int gen) {
             try {
                 while (true) {
+                    // A newer generation superseded this worker (wedge recovery);
+                    // exit so only one worker drives the socket at a time.
+                    if (!isCurrentWorker(gen)) return;
                     int mode;
                     boolean sync;
                     Operation currentOperation;
@@ -263,6 +322,7 @@ final class DirectBoseController {
                         currentOperation = operation;
                         operation = null;
                     }
+                    markProgress();
                     if (mode >= 0 && aclPresent < 0) continue;
                     if (currentOperation != null && aclPresent < 0) continue;
                     if ((mode >= 0 || currentOperation != null || sync) && !reachable()) {
@@ -298,26 +358,38 @@ final class DirectBoseController {
                         break;
                     }
                     failedOpens = 0;
+                    markProgress();
                     try {
+                        if (!isCurrentWorker(gen)) return;
                         if (mode >= 0) setMode(mode);
+                        if (!isCurrentWorker(gen)) return;
                         if (currentOperation != null) apply(currentOperation);
+                        if (!isCurrentWorker(gen)) return;
                         if (sync) queryState();
                         // Let the last reply settle before the socket is torn
-                        // down; closing mid-flight truncatedResponseBody.
+                        // down; closing mid-flight truncated responseBody.
                         sleepQuietly(SETTLE_DELAY_MS);
                     } finally {
-                        synchronized (lock) {
-                            syncInFlight = false;
+                        if (isCurrentWorker(gen)) {
+                            synchronized (lock) {
+                                syncInFlight = false;
+                            }
+                            closeSocket();
                         }
-                        closeSocket();
                     }
+                    markProgress();
                 }
             } catch (Throwable error) {
                 Logs.e("bose worker crashed", error);
             } finally {
                 synchronized (lock) {
-                    workerStarted = false;
-                    if (wantedMode >= 0 || wantedSync || operation != null) startWorker();
+                    // Only the active generation owns workerStarted. A stale worker
+                    // abandoned by wedge recovery must not clear the flag that now
+                    // belongs to its replacement.
+                    if (isCurrentWorker(gen)) {
+                        workerStarted = false;
+                        if (wantedMode >= 0 || wantedSync || operation != null) startWorker();
+                    }
                 }
             }
         }

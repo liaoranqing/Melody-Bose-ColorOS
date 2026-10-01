@@ -10,6 +10,9 @@
         <meta-data android:name="xposedmodule" android:value="true" />
         <meta-data android:name="xposeddescription" android:value="@string/module_description" />
         <meta-data android:name="xposedminversion" android:value="93" />
+        <!-- LSPosed recommended scope: pre-selects com.oplus.melody so the user
+             does not have to search for it when enabling the module. -->
+        <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
 
         <activity
             android:name=".MainActivity"
