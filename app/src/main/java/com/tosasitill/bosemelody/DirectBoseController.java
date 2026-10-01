@@ -36,7 +36,6 @@ final class DirectBoseController {
      */
     private static final long BATTERY_THROTTLE_MS = 30_000L;
     static final int AUDIO_SPATIAL = 2;
-    static final int AUDIO_WIND = 3;
     static final int AUDIO_ANC = 4;
     private static final long[] RETRY_BACKOFF_MS = new long[]{300L, 800L, 1500L};
     private static final int MAX_FAILED_OPENS = 4;
@@ -876,7 +875,7 @@ final class DirectBoseController {
             // EDITH/QC Ultra Earbuds 2 does not permit unauthenticated writes
             // to Settings[1.5] (it returns OpNotSupp=5). Its live CNC control is
             // AudioModesSettingsConfig[31.10], a 5-byte SETGET payload:
-            // [cnc, autoCNC, spatial, wind, anc]. Preserve all current fields
+            // [cnc, autoCNC, spatial, reserved, anc]. Preserve all current fields
             // and modify only cnc so the user's ANC/mode settings remain intact.
             BoseBmap.Frame current = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
                     BoseBmap.OP_GET, null);
@@ -910,7 +909,7 @@ final class DirectBoseController {
 
         /**
          * Write a single live AudioModesSettingsConfig [31.10] option.
-         * field: 2=spatial (0=off, 1=room, 2=head), 3=wind (0/1), 4=ANC (0/1).
+         * field: 2=spatial (0=off, 1=room, 2=head), 4=ANC (0/1).
          * Always GET first and preserve the other four fields.
          */
         private void applyAudioOptions(java.util.Map<Integer, Integer> options) {

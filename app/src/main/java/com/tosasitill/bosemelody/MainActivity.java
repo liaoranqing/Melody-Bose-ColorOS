@@ -44,7 +44,6 @@ public class MainActivity extends Activity {
     private SeekBar cncSeek;
     private Switch ancSwitch;
     private RadioGroup spatialOptions;
-    private Switch windSwitch;
     private Handler stateHandler;
     private Runnable statePoll;
     private boolean stateRefreshInFlight;
@@ -186,7 +185,7 @@ public class MainActivity extends Activity {
 
         card.addView(cardTitle("降噪强度", textPrimary));
         TextView ancHint = new TextView(this);
-        ancHint.setText("0 = 最强降噪 · 10 = 环境声最多；需处于降噪模式且关闭抗风噪时效果最明显");
+        ancHint.setText("0 = 最强降噪 · 10 = 环境声最多；需处于降噪模式时效果最明显");
         ancHint.setTextSize(13f);
         ancHint.setTextColor(textSecondary);
         ancHint.setPadding(0, 0, 0, dp(8));
@@ -268,8 +267,6 @@ public class MainActivity extends Activity {
         ancSwitch = addAudioSwitch(card, "主动降噪（ANC）", "关闭后为安静模式，不进行降噪", textPrimary, accent,
                 DirectBoseController.AUDIO_ANC);
         addSpatialOptions(card, textPrimary, textSecondary, accent);
-        windSwitch = addAudioSwitch(card, "抗风噪", "降低风声干扰；开启时降噪挡位差异可能不明显", textPrimary, accent,
-                DirectBoseController.AUDIO_WIND);
         LinearLayout.LayoutParams refreshParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         refreshParams.topMargin = dp(8);
@@ -363,7 +360,6 @@ public class MainActivity extends Activity {
                 int spatial = Math.max(0, Math.min(2, settings[2] & 0xff));
                 spatialOptions.check(100 + spatial);
             }
-            if (windSwitch != null) windSwitch.setChecked(settings[3] != 0);
         } finally {
             applyingAudioState = false;
         }
