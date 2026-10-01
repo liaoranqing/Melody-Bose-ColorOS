@@ -18,6 +18,9 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
+import android.widget.Switch;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.TextView;
 
 /**
@@ -38,11 +41,19 @@ public class MainActivity extends Activity {
     private TextView batteryHint;
     private TextView statusText;
     private TextView levelValue;
+    private SeekBar cncSeek;
+    private Switch ancSwitch;
+    private RadioGroup spatialOptions;
+    private Switch windSwitch;
+    private Handler stateHandler;
+    private Runnable statePoll;
+    private boolean stateRefreshInFlight;
+    private boolean applyingAudioState;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Logs.traceToFile(getExternalFilesDir(null));
-        requestBluetoothPermissions();
+        boolean bluetoothReady = requestBluetoothPermissions();
 
         boolean night = (getResources().getConfiguration().uiMode
                 & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
@@ -58,8 +69,8 @@ public class MainActivity extends Activity {
         root.addView(buildHeader(night));
         root.addView(buildBatteryCard(cardBg, textPrimary, textSecondary, accent));
         root.addView(buildAncCard(cardBg, textPrimary, textSecondary, accent));
+        root.addView(buildAudioOptionsCard(cardBg, textPrimary, textSecondary, accent));
         root.addView(buildAboutCard(cardBg, textPrimary, textSecondary));
-
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(night ? 0xFF0E1220 : 0xFFF4F5F7);
         scroll.addView(root, new ViewGroup.LayoutParams(
@@ -67,7 +78,7 @@ public class MainActivity extends Activity {
         setContentView(scroll);
     }
 
-    private void requestBluetoothPermissions() {
+    private boolean requestBluetoothPermissions() {
         // Both are runtime permissions on API 31+. cancelDiscovery() inside the
         // BMAP connect path needs BLUETOOTH_SCAN, so request it together with
         // BLUETOOTH_CONNECT or the settings page cannot read battery/state.
@@ -84,6 +95,11 @@ public class MainActivity extends Activity {
         if (!needed.isEmpty()) {
             requestPermissions(needed.toArray(new String[0]), PERMISSION_REQUEST);
         }
+        return android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S
+                || checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
     private View buildHeader(boolean night) {
@@ -176,8 +192,11 @@ public class MainActivity extends Activity {
         ancHint.setPadding(0, 0, 0, dp(8));
         card.addView(ancHint, matchWrap());
 
+        byte[] cached = DirectBoseController.cachedAudioSettings(BoseDeviceConfig.MAC);
+        final int initialLevel = cached != null && cached.length >= 1
+                ? Math.max(0, Math.min(10, cached[0] & 0xff)) : 5;
         levelValue = new TextView(this);
-        levelValue.setText("5 / 10");
+        levelValue.setText(initialLevel + " / 10");
         levelValue.setTextSize(28f);
         levelValue.setTypeface(Typeface.DEFAULT_BOLD);
         levelValue.setTextColor(accent);
@@ -186,8 +205,9 @@ public class MainActivity extends Activity {
 
         final int[] level = {5};
         SeekBar seek = new SeekBar(this);
+        cncSeek = seek;
         seek.setMax(10);
-        seek.setProgress(5);
+        seek.setProgress(initialLevel);
         seek.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));
         seek.getThumb().setTint(accent);
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -234,13 +254,157 @@ public class MainActivity extends Activity {
         return card;
     }
 
+    private View buildAudioOptionsCard(int cardBg, int textPrimary,
+                                       int textSecondary, int accent) {
+        LinearLayout card = card(cardBg);
+        card.addView(cardTitle("音频选项", textPrimary));
+        TextView hint = new TextView(this);
+        hint.setText("设置立即写入耳机；从降噪挡位调整、读取电量时同步状态");
+        hint.setTextSize(13f);
+        hint.setTextColor(textSecondary);
+        hint.setPadding(0, 0, 0, dp(10));
+        card.addView(hint, matchWrap());
+
+        ancSwitch = addAudioSwitch(card, "主动降噪（ANC）", "关闭后为安静模式，不进行降噪", textPrimary, accent,
+                DirectBoseController.AUDIO_ANC);
+        addSpatialOptions(card, textPrimary, textSecondary, accent);
+        windSwitch = addAudioSwitch(card, "抗风噪", "降低风声干扰；开启时降噪挡位差异可能不明显", textPrimary, accent,
+                DirectBoseController.AUDIO_WIND);
+        LinearLayout.LayoutParams refreshParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        refreshParams.topMargin = dp(8);
+        card.addView(secondaryButton("同步耳机设置", textPrimary, view -> refreshAudioState()), refreshParams);
+        applyCachedAudioState();
+        if (DirectBoseController.cachedAudioSettings(BoseDeviceConfig.MAC) == null) {
+            refreshAudioState();
+        }
+        return card;
+    }
+
+    private Switch addAudioSwitch(LinearLayout card, String title, String subtitle,
+                                  int textPrimary, int accent, int field) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(10), 0, dp(10));
+
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        TextView titleView = new TextView(this);
+        titleView.setText(title);
+        titleView.setTextSize(15f);
+        titleView.setTypeface(Typeface.DEFAULT_BOLD);
+        titleView.setTextColor(textPrimary);
+        labels.addView(titleView, matchWrap());
+        TextView subtitleView = new TextView(this);
+        subtitleView.setText(subtitle);
+        subtitleView.setTextSize(12f);
+        subtitleView.setTextColor(textPrimary == Color.WHITE ? 0xFF9AA3BD : 0xFF737B88);
+        labels.addView(subtitleView, matchWrap());
+        row.addView(labels, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        Switch toggle = new Switch(this);
+        toggle.setOnCheckedChangeListener((button, checked) -> {
+            if (applyingAudioState) return;
+            DirectBoseController.setAudioOption(getApplicationContext(), field, checked ? 1 : 0);
+        });
+        row.addView(toggle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        card.addView(row, matchWrap());
+        return toggle;
+    }
+
+    private void addSpatialOptions(LinearLayout card, int textPrimary,
+                                   int textSecondary, int accent) {
+        LinearLayout group = new LinearLayout(this);
+        group.setOrientation(LinearLayout.VERTICAL);
+        group.setPadding(0, dp(8), 0, dp(8));
+        TextView title = new TextView(this);
+        title.setText("空间音频");
+        title.setTextSize(15f);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(textPrimary);
+        group.addView(title, matchWrap());
+        TextView hint = new TextView(this);
+        hint.setText("选择空间效果；常规听歌可选关闭");
+        hint.setTextSize(12f);
+        hint.setTextColor(textSecondary);
+        group.addView(hint, matchWrap());
+        spatialOptions = new RadioGroup(this);
+        spatialOptions.setOrientation(RadioGroup.HORIZONTAL);
+        String[] labels = {"关闭", "Room", "Head"};
+        for (int i = 0; i < labels.length; i++) {
+            RadioButton option = new RadioButton(this);
+            option.setId(100 + i);
+            option.setText(labels[i]);
+            option.setTextSize(13f);
+            option.setTextColor(textPrimary);
+            option.setButtonTintList(android.content.res.ColorStateList.valueOf(accent));
+            spatialOptions.addView(option, new RadioGroup.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        }
+        spatialOptions.setOnCheckedChangeListener((radioGroup, checkedId) -> {
+            if (applyingAudioState || checkedId < 100 || checkedId > 102) return;
+            DirectBoseController.setAudioOption(getApplicationContext(),
+                    DirectBoseController.AUDIO_SPATIAL, checkedId - 100);
+        });
+        group.addView(spatialOptions, matchWrap());
+        card.addView(group, matchWrap());
+    }
+
+    private void applyCachedAudioState() {
+        byte[] settings = DirectBoseController.cachedAudioSettings(BoseDeviceConfig.MAC);
+        if (settings == null || settings.length < 5) return;
+        applyingAudioState = true;
+        try {
+            if (ancSwitch != null) ancSwitch.setChecked(settings[4] != 0);
+            if (spatialOptions != null) {
+                int spatial = Math.max(0, Math.min(2, settings[2] & 0xff));
+                spatialOptions.check(100 + spatial);
+            }
+            if (windSwitch != null) windSwitch.setChecked(settings[3] != 0);
+        } finally {
+            applyingAudioState = false;
+        }
+        if (levelValue != null) levelValue.setText((settings[0] & 0xff) + " / 10");
+        if (cncSeek != null) cncSeek.setProgress(Math.max(0, Math.min(10, settings[0] & 0xff)));
+    }
+
+    private void refreshAudioState() {
+        if (stateRefreshInFlight) return;
+        stateRefreshInFlight = true;
+        if (stateHandler != null && statePoll != null) stateHandler.removeCallbacks(statePoll);
+        DirectBoseController.refreshState(getApplicationContext(), BoseDeviceConfig.MAC);
+        stateHandler = new Handler(Looper.getMainLooper());
+        final long deadline = android.os.SystemClock.elapsedRealtime() + 15_000L;
+        statePoll = new Runnable() {
+            @Override public void run() {
+                byte[] settings = DirectBoseController.cachedAudioSettings(BoseDeviceConfig.MAC);
+                if (settings != null && settings.length >= 5) {
+                    applyCachedAudioState();
+                    if (batteryHint != null) batteryHint.setText("耳机设置已同步");
+                    stateRefreshInFlight = false;
+                    return;
+                }
+                if (android.os.SystemClock.elapsedRealtime() >= deadline) {
+                    if (batteryHint != null) batteryHint.setText("同步超时：请确认耳机已连接后重试");
+                    stateRefreshInFlight = false;
+                    return;
+                }
+                stateHandler.postDelayed(this, 400L);
+            }
+        };
+        stateHandler.postDelayed(statePoll, 400L);
+    }
+
     private View buildAboutCard(int cardBg, int textPrimary, int textSecondary) {
         LinearLayout card = card(cardBg);
         card.addView(cardTitle("使用说明", textPrimary));
         TextView about = new TextView(this);
         about.setText("1. 在 LSPosed 中启用本模块，作用域仅勾选 com.oplus.melody，然后重启 Melody。\n"
                 + "2. 耳机连接后，下拉音量面板即可在「关闭 / 降噪 / 通透」之间切换。\n"
-                + "3. 首次使用请允许「附近的设备」权限，否则本页无法读取电量。\n"
+                + "3. 首次使用请允许「附近的设备」权限，否则本页无法读取耳机设置或电量。\n"
                 + "4. 本页与面板共用同一条 BMAP 短连接链路，读取时请避免同时切换模式。\n\n"
                 + "版本 " + BuildConfig.VERSION_NAME);
         about.setTextSize(13f);
@@ -260,6 +424,8 @@ public class MainActivity extends Activity {
             Runnable poll = new Runnable() {
                 @Override public void run() {
                     int[] battery = DirectBoseController.cachedBattery(BoseDeviceConfig.MAC);
+                                byte[] audio = DirectBoseController.cachedAudioSettings(BoseDeviceConfig.MAC);
+                    if (audio != null && audio.length >= 5) applyCachedAudioState();
                     if (battery != null && (battery[0] >= 0 || battery[1] >= 0)) {
                         showBattery(battery);
                         return;
@@ -290,6 +456,11 @@ public class MainActivity extends Activity {
         int show = battery[3] >= 0 ? battery[3]
                 : Math.max(battery[0], battery[1]);
         batteryProgress.setProgress(Math.max(0, Math.min(100, show)));
+    }
+
+    @Override protected void onDestroy() {
+        if (stateHandler != null && statePoll != null) stateHandler.removeCallbacks(statePoll);
+        super.onDestroy();
     }
 
     private void sendCnc(int value) {

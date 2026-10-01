@@ -35,6 +35,9 @@ final class DirectBoseController {
      * Explicit refreshState()/queryState() reads are NOT throttled.
      */
     private static final long BATTERY_THROTTLE_MS = 30_000L;
+    static final int AUDIO_SPATIAL = 2;
+    static final int AUDIO_WIND = 3;
+    static final int AUDIO_ANC = 4;
     private static final long[] RETRY_BACKOFF_MS = new long[]{300L, 800L, 1500L};
     private static final int MAX_FAILED_OPENS = 4;
     private static final long MIN_REQUEST_GAP_MS = 700L;
@@ -51,6 +54,7 @@ final class DirectBoseController {
     private static final long WRITE_TIMEOUT_MS = 2_500L;
     private static final ConcurrentHashMap<String, Session> SESSIONS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, int[]> BATTERY = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, byte[]> AUDIO_SETTINGS = new ConcurrentHashMap<>();
     private static volatile int aclPresent;
     /** When {@link #aclPresent} was last set; a negative value expires after a TTL. */
     private static volatile long aclPresentAt;
@@ -84,6 +88,30 @@ final class DirectBoseController {
         return values == null ? null : values.clone();
     }
 
+    static byte[] cachedAudioSettings(String address) {
+        byte[] values = AUDIO_SETTINGS.get(BoseDeviceConfig.normalize(address));
+        return values == null ? null : values.clone();
+    }
+
+    private static void clearCachedAudioSettings(String address) {
+        AUDIO_SETTINGS.remove(BoseDeviceConfig.normalize(address));
+    }
+
+    private static void applyAudioOptions(byte[] payload,
+                                          java.util.Map<Integer, Integer> options) {
+        for (java.util.Map.Entry<Integer, Integer> entry : options.entrySet()) {
+            int field = entry.getKey();
+            int value = entry.getValue();
+            if (field >= AUDIO_SPATIAL && field <= AUDIO_ANC) payload[field] = (byte) value;
+        }
+    }
+
+    static void cacheAudioSettings(String address, byte[] values) {
+        if (values != null && values.length >= 5) {
+            AUDIO_SETTINGS.put(BoseDeviceConfig.normalize(address), Arrays.copyOf(values, 5));
+        }
+    }
+
     static int cachedMode() {
         return MelodyProviderHook.boseModeCache();
     }
@@ -91,6 +119,11 @@ final class DirectBoseController {
     static void setCnc(Context context, int level) {
         Session session = session(context, BoseDeviceConfig.MAC);
         if (session != null) session.enqueue(new Operation("cnc", new int[]{level}));
+    }
+
+    static void setAudioOption(Context context, int field, int value) {
+        Session session = session(context, BoseDeviceConfig.MAC);
+        if (session != null) session.enqueue(new Operation("audio_option", new int[]{field, value}));
     }
 
     static void setPresent(boolean present) {
@@ -135,6 +168,8 @@ final class DirectBoseController {
         private int wantedMode = -1;
         private boolean wantedSync;
         private Operation operation;
+        private final java.util.LinkedHashMap<Integer, Integer> pendingAudioOptions =
+                new java.util.LinkedHashMap<>();
         private boolean workerStarted;
         private volatile long lastRequestAt;
         private int failedOpens;
@@ -213,7 +248,14 @@ final class DirectBoseController {
         void enqueue(Operation value) {
             Logs.trace("bose enqueue " + value.name);
             synchronized (lock) {
-                operation = value;
+                if ("audio_option".equals(value.name)) {
+                    int field = value.values[0];
+                    int max = field == AUDIO_SPATIAL ? 2 : 1;
+                    pendingAudioOptions.put(field,
+                            Math.max(0, Math.min(max, value.values[1])));
+                } else {
+                    operation = value;
+                }
                 startWorker();
                 lock.notifyAll();
             }
@@ -237,6 +279,7 @@ final class DirectBoseController {
         }
 
         void refreshState() {
+            clearCachedAudioSettings(address);
             Logs.trace("bose explicit state refresh requested");
             synchronized (lock) {
                 if (syncInFlight) return;
@@ -257,11 +300,17 @@ final class DirectBoseController {
             closeSocket();
         }
 
-        private void requeue(int mode, Operation currentOperation, boolean sync) {
+        private void requeue(int mode, Operation currentOperation, boolean sync,
+                             java.util.Map<Integer, Integer> audioOptions) {
             synchronized (lock) {
                 if (aclPresent < 0 || probeResult == 0) {
                     syncInFlight = false;
                     return;
+                }
+                if (audioOptions != null) {
+                    for (java.util.Map.Entry<Integer, Integer> entry : audioOptions.entrySet()) {
+                        pendingAudioOptions.putIfAbsent(entry.getKey(), entry.getValue());
+                    }
                 }
                 if (mode >= 0 && wantedMode < 0) wantedMode = mode;
                 if (currentOperation != null && operation == null) operation = currentOperation;
@@ -348,14 +397,18 @@ final class DirectBoseController {
                     int mode;
                     boolean sync;
                     Operation currentOperation;
+                    java.util.Map<Integer, Integer> currentAudioOptions;
                     synchronized (lock) {
-                        if (wantedMode < 0 && !wantedSync && operation == null) return;
+                        if (wantedMode < 0 && !wantedSync && operation == null
+                                && pendingAudioOptions.isEmpty()) return;
                         mode = wantedMode;
                         wantedMode = -1;
                         sync = wantedSync;
                         wantedSync = false;
                         currentOperation = operation;
                         operation = null;
+                        currentAudioOptions = new java.util.LinkedHashMap<>(pendingAudioOptions);
+                        pendingAudioOptions.clear();
                     }
                     markProgress();
                     // NOTE: do not gate on raw `aclPresent < 0` here. Bose Music
@@ -364,7 +417,8 @@ final class DirectBoseController {
                     // to silently swallow every click until the process died.
                     // reachable() applies a short TTL to the negative hint and
                     // falls back to the bonded probe, and it logs the skip.
-                    if ((mode >= 0 || currentOperation != null || sync) && !reachable()) {
+                    if ((mode >= 0 || currentOperation != null || sync
+                            || !currentAudioOptions.isEmpty()) && !reachable()) {
                         // Log and drop. Do NOT requeue: an unreachable device would
                         // make the worker spin hot on requeued requests. The next
                         // user click retries with a fresh probe.
@@ -394,7 +448,7 @@ final class DirectBoseController {
                             }
                             break;
                         }
-                        requeue(mode, currentOperation, sync);
+                        requeue(mode, currentOperation, sync, currentAudioOptions);
                         sleepQuietly(RETRY_BACKOFF_MS[Math.min(failedOpens - 1,
                                 RETRY_BACKOFF_MS.length - 1)]);
                         break;
@@ -406,6 +460,11 @@ final class DirectBoseController {
                         if (mode >= 0) setMode(mode);
                         if (!isCurrentWorker(gen)) return;
                         if (currentOperation != null) apply(currentOperation);
+                        if (!isCurrentWorker(gen)) return;
+                        if (!currentAudioOptions.isEmpty()) {
+                            markProgress();
+                            applyAudioOptions(currentAudioOptions);
+                        }
                         if (!isCurrentWorker(gen)) return;
                         if (sync) queryState();
                         // Let the last reply settle before the socket is torn
@@ -430,7 +489,8 @@ final class DirectBoseController {
                     // belongs to its replacement.
                     if (isCurrentWorker(gen)) {
                         workerStarted = false;
-                        if (wantedMode >= 0 || wantedSync || operation != null) startWorker();
+                        if (wantedMode >= 0 || wantedSync || operation != null
+                                || !pendingAudioOptions.isEmpty()) startWorker();
                     }
                 }
             }
@@ -805,6 +865,10 @@ final class DirectBoseController {
         }
 
         private void apply(Operation operation) {
+            if ("audio_option".equals(operation.name)) {
+                applyAudioOption(operation.values[0], operation.values[1]);
+                return;
+            }
             if (!"cnc".equals(operation.name)) return;
             int level = Math.max(0, Math.min(10, operation.values[0]));
             // EDITH/QC Ultra Earbuds 2 does not permit unauthenticated writes
@@ -835,9 +899,57 @@ final class DirectBoseController {
                 int actual = confirmed.u8(0);
                 Logs.trace("bose CNC requested=" + level + " actual=" + actual
                         + " settings=" + BoseBmap.hex(confirmed.payload));
+                cacheAudioSettings(address, confirmed.payload);
                 MelodyProviderHook.onBoseAudioSettings(confirmed.payload);
             } else {
                 Logs.trace("bose CNC readback failed: " + describe(confirmed));
+            }
+        }
+
+        /**
+         * Write a single live AudioModesSettingsConfig [31.10] option.
+         * field: 2=spatial (0=off, 1=room, 2=head), 3=wind (0/1), 4=ANC (0/1).
+         * Always GET first and preserve the other four fields.
+         */
+        private void applyAudioOptions(java.util.Map<Integer, Integer> options) {
+            if (options.isEmpty()) return;
+            BoseBmap.Frame current = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
+                    BoseBmap.OP_GET, null);
+            if (current == null || current.operator == BoseBmap.OP_ERROR
+                    || current.payload.length < 5) {
+                Logs.trace("bose audio options GET failed: " + describe(current));
+                requeueAudioOptions(options);
+                return;
+            }
+            byte[] payload = Arrays.copyOf(current.payload, 5);
+            applyAudioOptions(payload, options);
+            BoseBmap.Frame answer = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
+                    BoseBmap.OP_SETGET, payload);
+            if (answer == null || answer.operator == BoseBmap.OP_ERROR) {
+                Logs.trace("bose audio options SETGET rejected: " + describe(answer));
+                requeueAudioOptions(options);
+                return;
+            }
+            BoseBmap.Frame confirmed = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
+                    BoseBmap.OP_GET, null);
+            if (confirmed != null && confirmed.operator != BoseBmap.OP_ERROR
+                    && confirmed.payload.length >= 5) {
+                Logs.trace("bose audio options requested=" + options
+                        + " settings=" + BoseBmap.hex(confirmed.payload));
+                cacheAudioSettings(address, confirmed.payload);
+                MelodyProviderHook.onBoseAudioSettings(confirmed.payload);
+            } else {
+                Logs.trace("bose audio options readback failed: " + describe(confirmed));
+            }
+        }
+
+        private void requeueAudioOptions(java.util.Map<Integer, Integer> options) {
+            synchronized (lock) {
+                for (java.util.Map.Entry<Integer, Integer> entry : options.entrySet()) {
+                    pendingAudioOptions.putIfAbsent(entry.getKey(), entry.getValue());
+                }
+                if (!workerStarted) startWorker();
+                lock.notifyAll();
             }
         }
 
@@ -869,6 +981,7 @@ final class DirectBoseController {
                     BoseBmap.OP_GET, null);
             if (confirmed != null && confirmed.payload.length >= 5) {
                 Logs.trace("bose ANC readback=" + BoseBmap.hex(confirmed.payload));
+                cacheAudioSettings(address, confirmed.payload);
                 MelodyProviderHook.onBoseAudioSettings(confirmed.payload);
             } else {
                 MelodyProviderHook.refreshNoiseUi();
@@ -883,6 +996,7 @@ final class DirectBoseController {
             BoseBmap.Frame audioSettings = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
                     BoseBmap.OP_GET, null);
             if (audioSettings != null && audioSettings.operator != BoseBmap.OP_ERROR) {
+                cacheAudioSettings(address, audioSettings.payload);
                 MelodyProviderHook.onBoseAudioSettings(audioSettings.payload);
             } else {
                 Logs.trace("bose audio settings GET failed: " + describe(audioSettings));

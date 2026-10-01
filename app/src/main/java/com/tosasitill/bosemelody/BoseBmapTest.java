@@ -16,6 +16,7 @@ public final class BoseBmapTest {
         assertBytes(new byte[]{31, 3, 5, 2, 2, 0},
                 BoseBmap.packet(31, 3, BoseBmap.OP_START, new byte[]{2, 0}));
         assertCncSetgetFixture();
+        assertAudioOptionSetgetFixtures();
         assertBatteryFixture();
         assertFragmentedFrames();
         System.out.println("BoseBmapTest OK");
@@ -31,6 +32,30 @@ public final class BoseBmapTest {
         if (current[0] != 3 || payload[1] != 0 || payload[2] != 2
                 || payload[3] != 0 || payload[4] != 1) {
             throw new AssertionError("CNC update changed unrelated AudioModes settings");
+        }
+    }
+
+    private static void assertAudioOptionSetgetFixtures() {
+        byte[] current = {6, 0, 1, 0, 1};
+        int[] fields = {2, 3, 4};
+        int[] values = {2, 1, 0};
+        byte[][] expected = {
+                {31, 10, 2, 5, 6, 0, 2, 0, 1},
+                {31, 10, 2, 5, 6, 0, 1, 1, 1},
+                {31, 10, 2, 5, 6, 0, 1, 0, 0}
+        };
+        for (int i = 0; i < fields.length; i++) {
+            byte[] payload = current.clone();
+            payload[fields[i]] = (byte) values[i];
+            assertBytes(expected[i], BoseBmap.packet(31, 10,
+                    BoseBmap.OP_SETGET, payload));
+        }
+        // A wind update must retain CNC, autoCNC, spatial and ANC.
+        byte[] preserved = current.clone();
+        preserved[3] = 1;
+        if (preserved[0] != 6 || preserved[1] != 0
+                || preserved[2] != 1 || preserved[4] != 1) {
+            throw new AssertionError("wind update changed CNC/autoCNC/spatial/ANC fields");
         }
     }
 

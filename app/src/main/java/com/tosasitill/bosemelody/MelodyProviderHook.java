@@ -287,6 +287,7 @@ public final class MelodyProviderHook {
     static void onBoseAudioSettings(byte[] payload) {
         if (!installed || payload == null || payload.length < 5) return;
         // [31.10] layout: [cnc, autoCNC, spatial, wind, anc]
+        DirectBoseController.cacheAudioSettings(BoseDeviceConfig.MAC, payload);
         confirmedAncEnabled = payload[4] != 0;
         boseNoiseCancellation = confirmedAncEnabled;
         noiseMode = resolveConfirmedMode(true);
