@@ -170,7 +170,7 @@ public class MainActivity extends Activity {
 
         card.addView(cardTitle("降噪强度", textPrimary));
         TextView ancHint = new TextView(this);
-        ancHint.setText("直接调节耳机主动降噪挡位（0 = 通透，10 = 最强降噪）");
+        ancHint.setText("0 = 最强降噪 · 10 = 环境声最多；需处于降噪模式且关闭抗风噪时效果最明显");
         ancHint.setTextSize(13f);
         ancHint.setTextColor(textSecondary);
         ancHint.setPadding(0, 0, 0, dp(8));

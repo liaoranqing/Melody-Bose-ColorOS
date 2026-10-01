@@ -807,20 +807,38 @@ final class DirectBoseController {
         private void apply(Operation operation) {
             if (!"cnc".equals(operation.name)) return;
             int level = Math.max(0, Math.min(10, operation.values[0]));
-            // EDITH exposes writable CNC at [1.5], payload [level, enabled].
-            // [31.10] is read-only for this product, so do not attempt SETGET there.
-            byte[] payload = new byte[]{(byte) level, 1};
-            BoseBmap.Frame answer = command(BoseBmap.BLOCK_SETTINGS,
-                    BoseBmap.FUNC_CNC, BoseBmap.OP_SETGET, payload);
-            if (answer == null || answer.operator == BoseBmap.OP_ERROR) {
-                Logs.trace("bose CNC update rejected response="
-                        + (answer == null ? "timeout" : answer.operator + ":" + BoseBmap.hex(answer.payload)));
+            // EDITH/QC Ultra Earbuds 2 does not permit unauthenticated writes
+            // to Settings[1.5] (it returns OpNotSupp=5). Its live CNC control is
+            // AudioModesSettingsConfig[31.10], a 5-byte SETGET payload:
+            // [cnc, autoCNC, spatial, wind, anc]. Preserve all current fields
+            // and modify only cnc so the user's ANC/mode settings remain intact.
+            BoseBmap.Frame current = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
+                    BoseBmap.OP_GET, null);
+            if (current == null || current.operator == BoseBmap.OP_ERROR
+                    || current.payload.length < 5) {
+                Logs.trace("bose CNC update unavailable: [31.10] GET failed; response="
+                        + describe(current));
                 return;
             }
-            BoseBmap.Frame confirmed = command(BoseBmap.BLOCK_SETTINGS,
-                    BoseBmap.FUNC_CNC, BoseBmap.OP_GET, null);
-            Logs.trace("bose CNC level=" + level + " set accepted; readback="
-                    + (confirmed == null ? "timeout/closed" : BoseBmap.hex(confirmed.payload)));
+            byte[] payload = Arrays.copyOf(current.payload, 5);
+            payload[0] = (byte) level;
+            BoseBmap.Frame answer = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
+                    BoseBmap.OP_SETGET, payload);
+            if (answer == null || answer.operator == BoseBmap.OP_ERROR) {
+                Logs.trace("bose CNC [31.10] update rejected response=" + describe(answer));
+                return;
+            }
+            BoseBmap.Frame confirmed = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
+                    BoseBmap.OP_GET, null);
+            if (confirmed != null && confirmed.operator != BoseBmap.OP_ERROR
+                    && confirmed.payload.length >= 5) {
+                int actual = confirmed.u8(0);
+                Logs.trace("bose CNC requested=" + level + " actual=" + actual
+                        + " settings=" + BoseBmap.hex(confirmed.payload));
+                MelodyProviderHook.onBoseAudioSettings(confirmed.payload);
+            } else {
+                Logs.trace("bose CNC readback failed: " + describe(confirmed));
+            }
         }
 
         private void setNoiseCancellation(boolean enabled) {

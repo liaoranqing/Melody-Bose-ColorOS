@@ -15,9 +15,23 @@ public final class BoseBmapTest {
                 BoseBmap.packet(31, 3, BoseBmap.OP_START, new byte[]{0, 0}));
         assertBytes(new byte[]{31, 3, 5, 2, 2, 0},
                 BoseBmap.packet(31, 3, BoseBmap.OP_START, new byte[]{2, 0}));
+        assertCncSetgetFixture();
         assertBatteryFixture();
         assertFragmentedFrames();
         System.out.println("BoseBmapTest OK");
+    }
+
+    private static void assertCncSetgetFixture() {
+        // Preserve autoCNC/spatial/wind/ANC and update only CNC=7 at [31.10].
+        byte[] current = {3, 0, 2, 0, 1};
+        byte[] payload = current.clone();
+        payload[0] = 7;
+        assertBytes(new byte[]{31, 10, 2, 5, 7, 0, 2, 0, 1},
+                BoseBmap.packet(31, 10, BoseBmap.OP_SETGET, payload));
+        if (current[0] != 3 || payload[1] != 0 || payload[2] != 2
+                || payload[3] != 0 || payload[4] != 1) {
+            throw new AssertionError("CNC update changed unrelated AudioModes settings");
+        }
     }
 
     private static void assertBatteryFixture() {
