@@ -248,6 +248,24 @@ public final class MelodyProviderHook {
     }
 
     /**
+     * Record the confirmed Bose mode without repainting the tile. Used while an
+     * OFF transition is mid-flight, so the tile does not flash "ANC" before the
+     * ANC bit is actually disabled. The tile is painted later by
+     * {@link #refreshNoiseUi()} once the [31.10] read-back is in.
+     */
+    static void setBoseModeQuiet(int mode) {
+        if (!installed || mode < BoseDeviceConfig.MODE_QUIET || mode > BoseDeviceConfig.MODE_CINEMA) return;
+        boseMode = mode;
+    }
+
+    /** Repaint the tile from the currently known Bose mode and ANC bit. */
+    static void refreshNoiseUi() {
+        if (!installed) return;
+        noiseMode = resolveConfirmedMode(true);
+        notifyChange(FLAG_NOISE);
+    }
+
+    /**
      * Silent switching always reports Quiet even when ANC is off, so Quiet with
      * ANC=0 is the closest supported representation of the user's "off": no
      * transparency and no noise cancelling.

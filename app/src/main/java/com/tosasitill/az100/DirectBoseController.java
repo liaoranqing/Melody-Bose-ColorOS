@@ -15,11 +15,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Short-lived Bose BMAP RFCOMM controller owned by the Melody process. */
 final class DirectBoseController {
-    private static final long CONNECT_TIMEOUT_MS = 8_000L;
+    private static final long CONNECT_TIMEOUT_MS = 4_000L;
     private static final long RESPONSE_TIMEOUT_MS = 3_000L;
     private static final long PRESENCE_TTL_MS = 10_000L;
-    private static final long[] RETRY_BACKOFF_MS = new long[]{600L, 1500L, 3000L};
-    private static final int MAX_FAILED_OPENS = 3;
+    private static final long[] RETRY_BACKOFF_MS = new long[]{300L, 800L, 1500L};
+    private static final int MAX_FAILED_OPENS = 4;
     private static final long MIN_REQUEST_GAP_MS = 700L;
     private static final long SETTLE_DELAY_MS = 150L;
     private static final long POST_WRITE_DELAY_MS = 200L;
@@ -278,6 +278,10 @@ final class DirectBoseController {
                         failedOpens++;
                         if (failedOpens > MAX_FAILED_OPENS) {
                             Logs.trace("bose giving up after " + failedOpens + " failed opens");
+                            // Reset so the next user press gets a fresh attempt
+                            // instead of being permanently suppressed until a
+                            // successful open happens to clear the counter.
+                            failedOpens = 0;
                             if (sync) {
                                 synchronized (lock) {
                                     syncInFlight = false;
@@ -375,7 +379,7 @@ final class DirectBoseController {
                 socket = opened;
                 linkDead = false;
                 opened.connect();
-                Thread.sleep(POST_WRITE_DELAY_MS + 300L);
+                Thread.sleep(POST_WRITE_DELAY_MS + 100L);
                 drainStartup(opened);
             } catch (Throwable error) {
                 Logs.trace("bose BMAP channel " + BoseDeviceConfig.RFCOMM_CHANNEL
@@ -499,8 +503,10 @@ final class DirectBoseController {
         private void setMode(int mode) {
             if (mode == BoseDeviceConfig.MODE_OFF) {
                 // OFF is not a Bose AudioModes preset. It is Quiet with the live
-                // ANC bit disabled, which is how the earlier working build did it.
-                switchAudioMode(BoseDeviceConfig.MODE_QUIET);
+                // ANC bit disabled. Switch to Quiet first but do NOT publish the
+                // intermediate "ANC" tile state: the off state is only final once
+                // ANC is cleared, so the tile is painted exactly once below.
+                if (!switchAudioModeQuiet(BoseDeviceConfig.MODE_QUIET)) return;
                 setNoiseCancellation(false);
                 return;
             }
@@ -511,6 +517,35 @@ final class DirectBoseController {
             if (mode == BoseDeviceConfig.MODE_QUIET && !MelodyProviderHook.ancConfirmed()) {
                 setNoiseCancellation(true);
             }
+        }
+
+        private boolean switchAudioModeQuiet(int mode) {
+            BoseBmap.Frame answer = command(BoseBmap.BLOCK_AUDIO_MODES,
+                    BoseBmap.FUNC_CURRENT_MODE, BoseBmap.OP_START,
+                    new byte[]{(byte) mode, 0});
+            if (answer == null || answer.operator == BoseBmap.OP_ERROR
+                    || (answer.operator != BoseBmap.OP_RESULT
+                    && answer.operator != BoseBmap.OP_PROCESSING)) {
+                Logs.trace("bose mode rejected mode=" + mode + " response="
+                        + (answer == null ? "timeout" : answer.operator));
+                return false;
+            }
+            BoseBmap.Frame confirmed = command(BoseBmap.BLOCK_AUDIO_MODES,
+                    BoseBmap.FUNC_CURRENT_MODE, BoseBmap.OP_GET, null);
+            if (confirmed != null && confirmed.payload.length > 0) {
+                int actualMode = confirmed.u8(0);
+                Logs.trace("bose mode readback requested=" + mode + " actual=" + actualMode);
+                if (actualMode != mode) {
+                    Logs.trace("bose mode mismatch requested=" + mode + " actual=" + actualMode);
+                    return false;
+                }
+                // Record the mode but do not repaint the tile yet; the OFF
+                // transition finishes with the ANC read-back in setNoiseCancellation.
+                MelodyProviderHook.setBoseModeQuiet(actualMode);
+                return true;
+            }
+            Logs.trace("bose mode not confirmed; keeping last confirmed UI state");
+            return false;
         }
 
         private boolean switchAudioMode(int mode) {
@@ -566,6 +601,7 @@ final class DirectBoseController {
                     BoseBmap.OP_GET, null);
             if (current == null || current.payload.length < 5) {
                 Logs.trace("bose noise-off unavailable: audio settings read failed");
+                MelodyProviderHook.refreshNoiseUi();
                 return;
             }
             byte[] payload = Arrays.copyOf(current.payload, 5);
@@ -574,21 +610,21 @@ final class DirectBoseController {
                     BoseBmap.OP_SETGET, payload);
             if (answer == null || answer.operator == BoseBmap.OP_ERROR) {
                 Logs.trace("bose noise-off update rejected response=" + describe(answer));
-                return;
-            }
-            Logs.trace("bose ANC update enabled=" + enabled + " payload="
-                    + BoseBmap.hex(answer.payload));
-            if (answer.payload.length >= 5) {
-                MelodyProviderHook.onBoseAudioSettings(answer.payload);
             } else {
-                BoseBmap.Frame confirmed = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
-                        BoseBmap.OP_GET, null);
-                if (confirmed != null && confirmed.payload.length >= 5) {
-                    Logs.trace("bose ANC readback=" + BoseBmap.hex(confirmed.payload));
-                    MelodyProviderHook.onBoseAudioSettings(confirmed.payload);
-                } else {
-                    Logs.trace("bose ANC update returned no valid readback");
-                }
+                Logs.trace("bose ANC update enabled=" + enabled + " payload="
+                        + BoseBmap.hex(answer.payload));
+            }
+            // Always read the live [31.10] back so the tile reflects the true ANC
+            // bit, whether or not the write went through. This is the single place
+            // the OFF/ANC tile state is published for the OFF transition, so the
+            // tile never flashes "ANC" before ANC is actually disabled.
+            BoseBmap.Frame confirmed = command(BoseBmap.BLOCK_AUDIO_MODES, 10,
+                    BoseBmap.OP_GET, null);
+            if (confirmed != null && confirmed.payload.length >= 5) {
+                Logs.trace("bose ANC readback=" + BoseBmap.hex(confirmed.payload));
+                MelodyProviderHook.onBoseAudioSettings(confirmed.payload);
+            } else {
+                MelodyProviderHook.refreshNoiseUi();
             }
         }
 
