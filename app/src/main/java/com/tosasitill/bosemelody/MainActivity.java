@@ -17,6 +17,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.Space;
 import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.RadioButton;
@@ -66,6 +67,7 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
 
         root.addView(buildHeader(night));
+        root.addView(buildQuickModesCard(cardBg, textPrimary, textSecondary, accent));
         root.addView(buildBatteryCard(cardBg, textPrimary, textSecondary, accent));
         root.addView(buildAncCard(cardBg, textPrimary, textSecondary, accent));
         root.addView(buildAudioOptionsCard(cardBg, textPrimary, textSecondary, accent));
@@ -145,6 +147,43 @@ public class MainActivity extends Activity {
         pillParams.topMargin = dp(16);
         header.addView(statusText, pillParams);
         return header;
+    }
+
+    private View buildQuickModesCard(int cardBg, int textPrimary, int textSecondary, int accent) {
+        LinearLayout card = card(cardBg);
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.HORIZONTAL);
+        TextView title = cardTitle("快捷场景", textPrimary);
+        heading.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView badge = new TextView(this);
+        badge.setText("BMAP 直连");
+        badge.setTextSize(11f);
+        badge.setTextColor(accent);
+        badge.setGravity(Gravity.CENTER);
+        badge.setPadding(dp(10), dp(5), dp(10), dp(5));
+        badge.setBackground(roundDrawable(0x164F63E6, dp(12)));
+        heading.addView(badge, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        card.addView(heading, matchWrap());
+        TextView hint = new TextView(this);
+        hint.setText("像 Bose Music 一样快速切换聆听场景");
+        hint.setTextSize(12f);
+        hint.setTextColor(textSecondary);
+        hint.setPadding(0, 0, 0, dp(10));
+        card.addView(hint, matchWrap());
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        String[] labels = {"关闭", "降噪", "通透"};
+        int[] modes = {BoseDeviceConfig.MODE_OFF, BoseDeviceConfig.MODE_QUIET, BoseDeviceConfig.MODE_AWARE};
+        for (int i = 0; i < labels.length; i++) {
+            final int mode = modes[i];
+            TextView button = secondaryButton(labels[i], textPrimary,
+                    view -> DirectBoseController.requestMode(getApplicationContext(), BoseDeviceConfig.MAC, mode));
+            row.addView(button, new LinearLayout.LayoutParams(0, dp(44), 1f));
+            if (i < labels.length - 1) row.addView(new Space(this), new LinearLayout.LayoutParams(dp(8), 1));
+        }
+        card.addView(row, matchWrap());
+        return card;
     }
 
     private View buildBatteryCard(int cardBg, int textPrimary, int textSecondary, int accent) {
@@ -469,6 +508,13 @@ public class MainActivity extends Activity {
 
     // ---------- small view helpers ----------
 
+    private GradientDrawable roundDrawable(int color, int radius) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(radius);
+        return drawable;
+    }
+
     private LinearLayout card(int background) {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -505,9 +551,7 @@ public class MainActivity extends Activity {
         button.setTextColor(Color.WHITE);
         button.setGravity(Gravity.CENTER);
         button.setPadding(0, dp(13), 0, dp(13));
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(accent);
-        drawable.setCornerRadius(dp(14));
+        GradientDrawable drawable = roundDrawable(accent, dp(14));
         button.setBackground(drawable);
         button.setOnClickListener(listener);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -524,9 +568,7 @@ public class MainActivity extends Activity {
         button.setTextColor(textColor);
         button.setGravity(Gravity.CENTER);
         button.setPadding(0, dp(11), 0, dp(11));
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(0x144F63E6);
-        drawable.setCornerRadius(dp(12));
+        GradientDrawable drawable = roundDrawable(0x144F63E6, dp(12));
         button.setBackground(drawable);
         button.setOnClickListener(listener);
         return button;
