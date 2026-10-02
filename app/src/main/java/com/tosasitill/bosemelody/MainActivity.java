@@ -561,7 +561,7 @@ public class MainActivity extends Activity {
         return button;
     }
 
-    private View secondaryButton(String text, int textColor, View.OnClickListener listener) {
+    private TextView secondaryButton(String text, int textColor, View.OnClickListener listener) {
         TextView button = new TextView(this);
         button.setText(text);
         button.setTextSize(14f);
